@@ -1,0 +1,3 @@
+[submodule "tests/comparison/deep_learning_and_the_game_of_go"]
+	path = tests/comparison/deep_learning_and_the_game_of_go
+	url = git@github.com:maxpumperla/deep_learning_and_the_game_of_go.git
