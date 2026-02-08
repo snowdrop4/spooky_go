@@ -1,70 +1,14 @@
-use std::collections::HashSet;
-
+use crate::bitboard::{Bitboard, BoardGeometry};
 use crate::board::{Board, STANDARD_COLS, STANDARD_ROWS};
 use crate::outcome::GameOutcome;
 use crate::player::Player;
 use crate::position::Position;
 use crate::r#move::Move;
 
-fn get_neighbors_on_board(board: &Board, pos: &Position) -> Vec<Position> {
-    let mut neighbors = Vec::new();
-    let col = pos.col;
-    let row = pos.row;
-
-    if col > 0 {
-        neighbors.push(Position::new(col - 1, row));
-    }
-    if col + 1 < board.width() {
-        neighbors.push(Position::new(col + 1, row));
-    }
-    if row > 0 {
-        neighbors.push(Position::new(col, row - 1));
-    }
-    if row + 1 < board.height() {
-        neighbors.push(Position::new(col, row + 1));
-    }
-
-    neighbors
-}
-
-fn get_group_on_board(board: &Board, start: &Position, player: Player) -> HashSet<Position> {
-    let mut group = HashSet::new();
-    let mut stack = vec![*start];
-
-    while let Some(pos) = stack.pop() {
-        if group.contains(&pos) {
-            continue;
-        }
-
-        if board.get_piece(&pos) == Some(player) {
-            group.insert(pos);
-
-            for neighbor in get_neighbors_on_board(board, &pos) {
-                if !group.contains(&neighbor) {
-                    stack.push(neighbor);
-                }
-            }
-        }
-    }
-
-    group
-}
-
-fn has_liberties_on_board(board: &Board, group: &HashSet<Position>) -> bool {
-    for pos in group {
-        for neighbor in get_neighbors_on_board(board, pos) {
-            if board.get_piece(&neighbor).is_none() {
-                return true;
-            }
-        }
-    }
-    false
-}
-
 #[derive(Clone, Debug)]
 struct MoveHistoryEntry {
     move_: Move,
-    captured_stones: Vec<Position>,
+    captured_stones: Bitboard,
     previous_ko_point: Option<Position>,
 }
 
@@ -73,6 +17,7 @@ pub const DEFAULT_KOMI: f32 = 7.5;
 #[derive(Clone, Debug)]
 pub struct Game {
     board: Board,
+    geo: BoardGeometry,
     current_player: Player,
     move_history: Vec<MoveHistoryEntry>,
     is_over: bool,
@@ -105,6 +50,7 @@ impl Game {
     ) -> Self {
         Game {
             board: Board::new(width, height),
+            geo: BoardGeometry::new(width, height),
             current_player: Player::Black,
             move_history: Vec::new(),
             is_over: false,
@@ -181,75 +127,34 @@ impl Game {
         let mut black_score: f32 = 0.0;
         let mut white_score: f32 = self.komi;
 
-        let mut visited = HashSet::new();
+        black_score += self.board.black_stones().count() as f32;
+        white_score += self.board.white_stones().count() as f32;
 
-        for row in 0..self.board.height() {
-            for col in 0..self.board.width() {
-                let pos = Position::new(col, row);
+        let occupied = self.board.occupied();
+        let mut remaining_empty = self.board.empty_squares(self.geo.board_mask);
 
-                match self.board.get_piece(&pos) {
-                    Some(Player::Black) => black_score += 1.0,
-                    Some(Player::White) => white_score += 1.0,
-                    None => {
-                        if !visited.contains(&pos) {
-                            let (region, owner) = self.get_empty_region(&pos, &mut visited);
-                            let territory = region.len() as f32;
-                            match owner {
-                                Some(Player::Black) => black_score += territory,
-                                Some(Player::White) => white_score += territory,
-                                None => {}
-                            }
-                        }
-                    }
-                }
+        while let Some(idx) = remaining_empty.lowest_bit_index() {
+            let seed = Bitboard::single(idx);
+            let empty_mask = self.geo.board_mask & !occupied;
+            let region = self.geo.flood_fill(seed, empty_mask);
+
+            // Remove this region from remaining
+            remaining_empty &= !region;
+
+            // Check which players are adjacent to this region
+            let region_neighbors = self.geo.neighbors(&region);
+            let black_adjacent = (region_neighbors & self.board.black_stones()).is_nonzero();
+            let white_adjacent = (region_neighbors & self.board.white_stones()).is_nonzero();
+
+            let territory = region.count() as f32;
+            match (black_adjacent, white_adjacent) {
+                (true, false) => black_score += territory,
+                (false, true) => white_score += territory,
+                _ => {}
             }
         }
 
         (black_score, white_score)
-    }
-
-    fn get_empty_region(
-        &self,
-        start: &Position,
-        visited: &mut HashSet<Position>,
-    ) -> (HashSet<Position>, Option<Player>) {
-        let mut region = HashSet::new();
-        let mut stack = vec![*start];
-        let mut black_adjacent = false;
-        let mut white_adjacent = false;
-
-        while let Some(pos) = stack.pop() {
-            if visited.contains(&pos) || region.contains(&pos) {
-                continue;
-            }
-
-            if self.board.get_piece(&pos).is_some() {
-                continue;
-            }
-
-            region.insert(pos);
-            visited.insert(pos);
-
-            for neighbor in self.get_neighbors(&pos) {
-                match self.board.get_piece(&neighbor) {
-                    Some(Player::Black) => black_adjacent = true,
-                    Some(Player::White) => white_adjacent = true,
-                    None => {
-                        if !visited.contains(&neighbor) && !region.contains(&neighbor) {
-                            stack.push(neighbor);
-                        }
-                    }
-                }
-            }
-        }
-
-        let owner = match (black_adjacent, white_adjacent) {
-            (true, false) => Some(Player::Black),
-            (false, true) => Some(Player::White),
-            _ => None,
-        };
-
-        (region, owner)
     }
 
     fn determine_outcome(&self) -> GameOutcome {
@@ -263,63 +168,50 @@ impl Game {
         }
     }
 
-    fn get_neighbors(&self, pos: &Position) -> Vec<Position> {
-        get_neighbors_on_board(&self.board, pos)
-    }
+    /// Check if placing a stone at `idx` for `player` would be suicide.
+    /// Zero heap allocations — works entirely on stack-based bitboards.
+    fn would_be_suicide(&self, idx: usize, player: Player) -> bool {
+        let bit = Bitboard::single(idx);
+        let own = self.board.stones_for(player) | bit;
+        let opp = self.board.stones_for(player.opposite());
+        let empty = self.geo.board_mask & !(own | opp);
 
-    fn get_group(&self, start: &Position) -> HashSet<Position> {
-        match self.board.get_piece(start) {
-            Some(player) => get_group_on_board(&self.board, start, player),
-            None => HashSet::new(),
+        // Find the group containing the new stone
+        let group = self.geo.flood_fill(bit, own);
+
+        // Check if this group has any liberties
+        let group_neighbors = self.geo.neighbors(&group);
+        if (group_neighbors & empty).is_nonzero() {
+            return false; // has liberties — not suicide
         }
-    }
 
-    fn count_liberties(&self, group: &HashSet<Position>) -> usize {
-        let mut liberties = HashSet::new();
+        // No liberties, but check if any adjacent opponent group would be captured
+        let adjacent_opponent = group_neighbors & opp;
+        if adjacent_opponent.is_empty() {
+            return true; // no adjacent opponents to capture — it's suicide
+        }
 
-        for pos in group {
-            for neighbor in self.get_neighbors(pos) {
-                if self.board.get_piece(&neighbor).is_none() {
-                    liberties.insert(neighbor);
-                }
+        // Check each adjacent opponent group
+        let mut remaining_adj_opp = adjacent_opponent;
+        while let Some(opp_idx) = remaining_adj_opp.lowest_bit_index() {
+            let opp_seed = Bitboard::single(opp_idx);
+            let opp_group = self.geo.flood_fill(opp_seed, opp);
+
+            // Remove this entire group from remaining so we don't re-check it
+            remaining_adj_opp &= !opp_group;
+
+            // This opponent group's liberties (excluding the new stone's position)
+            let opp_group_neighbors = self.geo.neighbors(&opp_group);
+            let opp_liberties = opp_group_neighbors & empty;
+
+            if opp_liberties.is_empty() {
+                // This opponent group has no liberties (our new stone took the last one)
+                // → it would be captured → not suicide
+                return false;
             }
         }
 
-        liberties.len()
-    }
-
-    fn has_liberties(&self, group: &HashSet<Position>) -> bool {
-        has_liberties_on_board(&self.board, group)
-    }
-
-    fn remove_group(&mut self, group: &HashSet<Position>) {
-        for pos in group {
-            self.board.set_piece(pos, None);
-        }
-    }
-
-    fn would_be_suicide(&self, pos: &Position, player: Player) -> bool {
-        let mut test_board = self.board.clone();
-        test_board.set_piece(pos, Some(player));
-
-        let group = get_group_on_board(&test_board, pos, player);
-
-        if has_liberties_on_board(&test_board, &group) {
-            return false;
-        }
-
-        let opponent = player.opposite();
-        for neighbor in get_neighbors_on_board(&test_board, pos) {
-            if test_board.get_piece(&neighbor) == Some(opponent) {
-                let opponent_group = get_group_on_board(&test_board, &neighbor, opponent);
-
-                if !has_liberties_on_board(&test_board, &opponent_group) {
-                    return false;
-                }
-            }
-        }
-
-        true
+        true // no opponent group can be captured, own group has no liberties → suicide
     }
 
     pub fn legal_moves(&self) -> Vec<Move> {
@@ -328,27 +220,22 @@ impl Game {
         }
 
         let mut moves = Vec::new();
+        let empty = self.board.empty_squares(self.geo.board_mask);
+        let ko_idx = self.ko_point.map(|p| p.to_index(self.geo.width));
 
-        for row in 0..self.board.height() {
-            for col in 0..self.board.width() {
-                let pos = Position::new(col, row);
-
-                if self.board.get_piece(&pos).is_some() {
+        for idx in empty.iter_ones() {
+            if let Some(ki) = ko_idx {
+                if ki == idx {
                     continue;
                 }
-
-                if let Some(ko) = self.ko_point {
-                    if ko == pos {
-                        continue;
-                    }
-                }
-
-                if self.would_be_suicide(&pos, self.current_player) {
-                    continue;
-                }
-
-                moves.push(Move::place(col, row));
             }
+
+            if self.would_be_suicide(idx, self.current_player) {
+                continue;
+            }
+
+            let pos = Position::from_index(idx, self.geo.width);
+            moves.push(Move::place(pos.col, pos.row));
         }
 
         moves.push(Move::pass());
@@ -370,7 +257,9 @@ impl Game {
                     return false;
                 }
 
-                if self.board.get_piece(&pos).is_some() {
+                let idx = pos.to_index(self.geo.width);
+
+                if self.board.occupied().get(idx) {
                     return false;
                 }
 
@@ -380,7 +269,7 @@ impl Game {
                     }
                 }
 
-                if self.would_be_suicide(&pos, self.current_player) {
+                if self.would_be_suicide(idx, self.current_player) {
                     return false;
                 }
 
@@ -395,15 +284,13 @@ impl Game {
         }
 
         let previous_ko_point = self.ko_point;
-        let mut captured_stones = Vec::new();
+        let mut captured_stones = Bitboard::empty();
         self.ko_point = None;
 
         match move_ {
             Move::Pass => {
                 self.consecutive_passes += 1;
 
-                // Only end game via double-pass if we've played enough moves
-                // Note: +1 because move_history hasn't been updated yet
                 if self.consecutive_passes >= 2
                     && self.move_history.len() + 1 >= self.min_moves_before_pass_ends
                 {
@@ -415,37 +302,58 @@ impl Game {
                 self.consecutive_passes = 0;
 
                 let pos = Position::new(*col, *row);
-                self.board.set_piece(&pos, Some(self.current_player));
+                let idx = pos.to_index(self.geo.width);
+                self.board.set_bit(idx, self.current_player);
 
                 let opponent = self.current_player.opposite();
-                let mut total_captured = 0;
-                let mut single_capture_pos: Option<Position> = None;
+                let bit = Bitboard::single(idx);
+                let bit_neighbors = self.geo.neighbors(&bit);
+                let adjacent_opponent = bit_neighbors & self.board.stones_for(opponent);
 
-                for neighbor in self.get_neighbors(&pos) {
-                    if self.board.get_piece(&neighbor) == Some(opponent) {
-                        let group = self.get_group(&neighbor);
-                        if !self.has_liberties(&group) {
-                            if group.len() == 1 && total_captured == 0 {
-                                single_capture_pos = Some(neighbor);
-                            } else {
-                                single_capture_pos = None;
-                            }
+                let mut total_captured: u32 = 0;
+                let mut single_capture_idx: Option<usize> = None;
 
-                            total_captured += group.len();
+                // Check each adjacent opponent group for capture
+                let mut remaining = adjacent_opponent;
+                while let Some(opp_idx) = remaining.lowest_bit_index() {
+                    let opp_seed = Bitboard::single(opp_idx);
+                    let opp_group =
+                        self.geo.flood_fill(opp_seed, self.board.stones_for(opponent));
 
-                            for p in &group {
-                                captured_stones.push(*p);
-                            }
-                            self.remove_group(&group);
+                    // Remove this group from remaining
+                    remaining &= !opp_group;
+
+                    // Check if this group has any liberties
+                    let opp_neighbors = self.geo.neighbors(&opp_group);
+                    let opp_empty = self.board.empty_squares(self.geo.board_mask);
+                    if (opp_neighbors & opp_empty).is_empty() {
+                        // Captured!
+                        let group_size = opp_group.count();
+                        if group_size == 1 && total_captured == 0 {
+                            single_capture_idx = Some(opp_idx);
+                        } else {
+                            single_capture_idx = None;
                         }
+                        total_captured += group_size;
+                        captured_stones |= opp_group;
+                        self.board.remove_stones(opp_group);
                     }
                 }
 
+                // Ko detection
                 if total_captured == 1 {
-                    if let Some(captured_pos) = single_capture_pos {
-                        let placed_group = self.get_group(&pos);
-                        if placed_group.len() == 1 && self.count_liberties(&placed_group) == 1 {
-                            self.ko_point = Some(captured_pos);
+                    if let Some(cap_idx) = single_capture_idx {
+                        let placed_group =
+                            self.geo
+                                .flood_fill(bit, self.board.stones_for(self.current_player));
+                        if placed_group.count() == 1 {
+                            let placed_neighbors = self.geo.neighbors(&placed_group);
+                            let placed_liberties =
+                                placed_neighbors & self.board.empty_squares(self.geo.board_mask);
+                            if placed_liberties.count() == 1 {
+                                self.ko_point =
+                                    Some(Position::from_index(cap_idx, self.geo.width));
+                            }
                         }
                     }
                 }
@@ -482,12 +390,12 @@ impl Game {
                 }
                 Move::Place { col, row } => {
                     let pos = Position::new(col, row);
-                    self.board.set_piece(&pos, None);
+                    let idx = pos.to_index(self.geo.width);
+                    self.board.clear_bit(idx);
 
+                    // Restore captured stones for the opponent
                     let opponent = self.current_player.opposite();
-                    for captured_pos in &entry.captured_stones {
-                        self.board.set_piece(captured_pos, Some(opponent));
-                    }
+                    self.board.restore_stones(entry.captured_stones, opponent);
 
                     self.is_over = false;
                     self.outcome = None;
@@ -621,8 +529,6 @@ mod tests {
         game.make_move(&Move::place(1, 0));
         game.make_move(&Move::pass());
         game.make_move(&Move::pass());
-        // Only 4 moves, consecutive_passes = 2, but we need to check after a move
-        // Actually at move 4, we have 4 moves in history, so pass-pass at moves 3-4 should end it
         assert!(game.is_over());
     }
 
@@ -639,17 +545,13 @@ mod tests {
 
         game.make_move(&Move::place(4, 0));
         assert!(game.is_over());
-        // Game ends by max moves, outcome determined by scoring
         assert!(game.outcome().is_some());
     }
 
     #[test]
     fn test_scoring_black_wins() {
-        // Create a small board where Black controls most territory
-        // Use min_moves=0 so double-pass ends game immediately
         let mut game = Game::with_options(5, 5, 0.5, 0, 1000);
 
-        // Black plays in corner, White passes
         game.make_move(&Move::place(0, 0)); // Black
         game.make_move(&Move::pass()); // White
         game.make_move(&Move::place(1, 0)); // Black
@@ -661,8 +563,6 @@ mod tests {
         game.make_move(&Move::pass()); // Black - game ends
 
         assert!(game.is_over());
-        // Black has 4 stones, White has 0 + 0.5 komi
-        // Territory is shared so neither gets it
         let (black_score, white_score) = game.score();
         assert!(black_score > white_score);
         assert_eq!(game.outcome(), Some(GameOutcome::BlackWin));
@@ -670,16 +570,8 @@ mod tests {
 
     #[test]
     fn test_scoring_with_territory() {
-        // Create a game where Black controls a clear territory
-        // Use min_moves=0 so double-pass ends game immediately
         let mut game = Game::with_options(5, 5, 0.0, 0, 1000);
 
-        // Black surrounds top-left corner
-        // . . . . .
-        // B . . . .
-        // B B . . .
-        // . . . . .
-        // . . . . .
         game.make_move(&Move::place(0, 2)); // Black
         game.make_move(&Move::pass()); // White
         game.make_move(&Move::place(0, 3)); // Black
@@ -689,7 +581,6 @@ mod tests {
         game.make_move(&Move::pass()); // Black - game ends
 
         let (black_score, white_score) = game.score();
-        // Black: 3 stones + territory at (0,4) and possibly more
         assert!(black_score > white_score);
         assert_eq!(game.outcome(), Some(GameOutcome::BlackWin));
     }
@@ -747,7 +638,6 @@ mod tests {
 
     #[test]
     fn test_actual_suicide_prevention() {
-        // Use min_moves=0 so we can end the game with passes to test suicide on game-over board
         let mut game = Game::with_options(5, 5, DEFAULT_KOMI, 0, 1000);
 
         game.make_move(&Move::place(1, 0));
@@ -757,7 +647,6 @@ mod tests {
         game.make_move(&Move::pass());
 
         let suicide_move = Move::place(0, 0);
-        // Game is over, so no moves are legal
         assert!(!game.is_legal_move(&suicide_move));
     }
 
@@ -765,17 +654,11 @@ mod tests {
     fn test_ko_rule() {
         let mut game = Game::new(5, 5);
 
-        // Build a ko shape:
-        //     0 1 2 3
-        // Row2 . B W .
-        // Row1 B W . W
-        // Row0 . B W .
-
         game.make_move(&Move::place(1, 0)); // B
         game.make_move(&Move::place(2, 0)); // W
 
         game.make_move(&Move::place(0, 1)); // B
-        game.make_move(&Move::place(1, 1)); // W - this stone will be captured
+        game.make_move(&Move::place(1, 1)); // W
 
         game.make_move(&Move::place(1, 2)); // B
         game.make_move(&Move::place(2, 2)); // W
@@ -783,18 +666,13 @@ mod tests {
         game.make_move(&Move::pass()); // B pass
         game.make_move(&Move::place(3, 1)); // W
 
-        // Now Black captures W at (1,1) by playing at (2,1)
         let ko_capture = Move::place(2, 1);
         assert!(game.is_legal_move(&ko_capture));
         game.make_move(&ko_capture);
 
-        // W at (1,1) should be captured
         assert!(game.board().get_piece(&Position::new(1, 1)).is_none());
-
-        // Ko point should be set to (1,1)
         assert_eq!(game.ko_point(), Some(Position::new(1, 1)));
 
-        // White cannot immediately recapture at (1,1)
         let immediate_recapture = Move::place(1, 1);
         assert!(!game.is_legal_move(&immediate_recapture));
     }
@@ -855,7 +733,6 @@ mod tests {
 
     #[test]
     fn test_legal_moves_when_game_over() {
-        // Use min_moves=0 so double-pass ends game immediately
         let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 0, 1000);
 
         game.make_move(&Move::pass());

@@ -1,22 +1,35 @@
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
+use crate::bitboard::Bitboard;
 use crate::player::Player;
 use crate::position::Position;
 
 pub const STANDARD_COLS: usize = 19;
 pub const STANDARD_ROWS: usize = 19;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Board {
-    squares: Vec<Option<Player>>,
+    black: Bitboard,
+    white: Bitboard,
     width: usize,
     height: usize,
+}
+
+impl Hash for Board {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.black.hash(state);
+        self.white.hash(state);
+        self.width.hash(state);
+        self.height.hash(state);
+    }
 }
 
 impl Board {
     pub fn new(width: usize, height: usize) -> Self {
         Board {
-            squares: vec![None; width * height],
+            black: Bitboard::empty(),
+            white: Bitboard::empty(),
             width,
             height,
         }
@@ -34,13 +47,16 @@ impl Board {
         self.height
     }
 
-    fn index(&self, col: usize, row: usize) -> usize {
-        row * self.width + col
-    }
-
     pub fn get_piece(&self, pos: &Position) -> Option<Player> {
         if pos.is_valid(self.width, self.height) {
-            self.squares[pos.to_index(self.width)]
+            let idx = pos.to_index(self.width);
+            if self.black.get(idx) {
+                Some(Player::Black)
+            } else if self.white.get(idx) {
+                Some(Player::White)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -48,12 +64,81 @@ impl Board {
 
     pub fn set_piece(&mut self, pos: &Position, player: Option<Player>) {
         if pos.is_valid(self.width, self.height) {
-            self.squares[pos.to_index(self.width)] = player;
+            let idx = pos.to_index(self.width);
+            self.black.clear(idx);
+            self.white.clear(idx);
+            match player {
+                Some(Player::Black) => self.black.set(idx),
+                Some(Player::White) => self.white.set(idx),
+                None => {}
+            }
         }
     }
 
     pub fn clear(&mut self) {
-        self.squares = vec![None; self.width * self.height];
+        self.black = Bitboard::empty();
+        self.white = Bitboard::empty();
+    }
+
+    #[inline]
+    pub(crate) fn black_stones(&self) -> Bitboard {
+        self.black
+    }
+
+    #[inline]
+    pub(crate) fn white_stones(&self) -> Bitboard {
+        self.white
+    }
+
+    #[inline]
+    pub(crate) fn occupied(&self) -> Bitboard {
+        self.black | self.white
+    }
+
+    #[inline]
+    pub(crate) fn empty_squares(&self, board_mask: Bitboard) -> Bitboard {
+        board_mask & !(self.black | self.white)
+    }
+
+    /// Remove all stones indicated by `bb` from the board.
+    #[inline]
+    pub(crate) fn remove_stones(&mut self, bb: Bitboard) {
+        self.black &= !bb;
+        self.white &= !bb;
+    }
+
+    /// Restore stones from a captured bitboard for the given player.
+    #[inline]
+    pub(crate) fn restore_stones(&mut self, bb: Bitboard, player: Player) {
+        match player {
+            Player::Black => self.black |= bb,
+            Player::White => self.white |= bb,
+        }
+    }
+
+    /// Get stones bitboard for a specific player.
+    #[inline]
+    pub(crate) fn stones_for(&self, player: Player) -> Bitboard {
+        match player {
+            Player::Black => self.black,
+            Player::White => self.white,
+        }
+    }
+
+    /// Set a single bit for a player (no clearing — caller must ensure position is empty).
+    #[inline]
+    pub(crate) fn set_bit(&mut self, idx: usize, player: Player) {
+        match player {
+            Player::Black => self.black.set(idx),
+            Player::White => self.white.set(idx),
+        }
+    }
+
+    /// Clear a single bit from both bitboards.
+    #[inline]
+    pub(crate) fn clear_bit(&mut self, idx: usize) {
+        self.black.clear(idx);
+        self.white.clear(idx);
     }
 }
 
@@ -69,9 +154,8 @@ impl fmt::Display for Board {
             write!(f, "|")?;
 
             for col in 0..self.width {
-                let index = self.index(col, row);
-
-                let c = if let Some(player) = self.squares[index] {
+                let pos = Position::new(col, row);
+                let c = if let Some(player) = self.get_piece(&pos) {
                     player.to_char()
                 } else {
                     '.'

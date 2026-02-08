@@ -1,6 +1,5 @@
 use crate::game::Game;
 use crate::player::Player;
-use crate::position::Position;
 use crate::r#move::Move;
 
 /// Number of planes for piece positions (1 for WHITE + 1 for BLACK)
@@ -19,56 +18,41 @@ pub const TOTAL_INPUT_PLANES: usize = (HISTORY_LENGTH * PIECE_PLANES) + CONSTANT
 /// Returns (flat_data, num_planes, height, width), where flat_data is in row-major order
 pub fn encode_game_planes(game: &Game) -> (Vec<f32>, usize, usize, usize) {
     let perspective = game.turn();
-    let opponent = perspective.opposite();
     let width = game.width();
     let height = game.height();
     let num_planes = TOTAL_INPUT_PLANES;
-    let total_size = num_planes * height * width;
+    let board_size = height * width;
+    let total_size = num_planes * board_size;
     let mut data = vec![0.0f32; total_size];
 
-    // Helper to set a value in the flat array
-    let set_plane_value =
-        |data: &mut Vec<f32>, plane: usize, row: usize, col: usize, value: f32| {
-            data[plane * height * width + row * width + col] = value;
-        };
+    let board = game.board();
+    let (own_bb, opp_bb) = match perspective {
+        Player::Black => (board.black_stones(), board.white_stones()),
+        Player::White => (board.white_stones(), board.black_stones()),
+    };
 
-    // Plane for current player's pieces
-    for row in 0..height {
-        for col in 0..width {
-            let pos = Position::new(col, row);
-            if let Some(player) = game.board().get_piece(&pos) {
-                if player == perspective {
-                    set_plane_value(&mut data, 0, row, col, 1.0);
-                }
-            }
-        }
+    // Plane 0: current player's pieces — iterate set bits directly
+    for idx in own_bb.iter_ones() {
+        data[idx] = 1.0;
     }
 
-    // Plane for opponent's pieces
-    for row in 0..height {
-        for col in 0..width {
-            let pos = Position::new(col, row);
-            if let Some(player) = game.board().get_piece(&pos) {
-                if player == opponent {
-                    set_plane_value(&mut data, 1, row, col, 1.0);
-                }
-            }
-        }
+    // Plane 1: opponent's pieces — iterate set bits directly
+    let plane1_offset = board_size;
+    for idx in opp_bb.iter_ones() {
+        data[plane1_offset + idx] = 1.0;
     }
 
     // Historical positions (planes 2 to HISTORY_LENGTH * PIECE_PLANES - 1) are zeros
 
     // Color plane (last plane)
-    let color_plane = HISTORY_LENGTH * PIECE_PLANES;
+    let color_plane_offset = (HISTORY_LENGTH * PIECE_PLANES) * board_size;
     let color_value = if perspective == Player::Black {
         1.0
     } else {
         0.0
     };
-    for row in 0..height {
-        for col in 0..width {
-            set_plane_value(&mut data, color_plane, row, col, color_value);
-        }
+    for i in 0..board_size {
+        data[color_plane_offset + i] = color_value;
     }
 
     (data, num_planes, height, width)
