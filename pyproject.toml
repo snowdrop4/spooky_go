@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "setuptools-rust"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rust-go"
+name = "spooky_go"
 version = "0.2.19"
 description = "High-performance go library with arbitrary board sizes"
 readme = "README.md"

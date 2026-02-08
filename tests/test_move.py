@@ -1,5 +1,6 @@
 import pytest
-from rust_go import Game, Move
+
+from spooky_go import Game, Move
 
 
 class TestMoveCreation:

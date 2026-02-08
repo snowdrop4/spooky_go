@@ -1,5 +1,6 @@
 import pytest
-from rust_go import BLACK, WHITE, Board
+
+from spooky_go import BLACK, WHITE, Board
 
 
 class TestBoardCreation:

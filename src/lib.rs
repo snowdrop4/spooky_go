@@ -17,7 +17,7 @@ use pyo3::prelude::*;
 
 #[cfg(feature = "python")]
 #[pymodule(gil_used = false)]
-fn rust_go(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn spooky_go(m: &Bound<'_, PyModule>) -> PyResult<()> {
     use player::Player;
     use python_bindings::*;
     m.add_class::<PyBoard>()?;
@@ -169,7 +169,13 @@ mod python_bindings {
                 ));
             }
             Ok(PyGame {
-                game: Game::with_options(width, height, komi, min_moves_before_pass_ends, max_moves),
+                game: Game::with_options(
+                    width,
+                    height,
+                    komi,
+                    min_moves_before_pass_ends,
+                    max_moves,
+                ),
             })
         }
 

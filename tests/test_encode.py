@@ -1,7 +1,14 @@
-from rust_go import TOTAL_INPUT_PLANES, Game, Move
+from spooky_go import TOTAL_INPUT_PLANES, Game, Move
 
 
-def get_plane_value(data: list[float], plane: int, row: int, col: int, height: int, width: int,) -> float:
+def get_plane_value(
+    data: list[float],
+    plane: int,
+    row: int,
+    col: int,
+    height: int,
+    width: int,
+) -> float:
     return data[plane * height * width + row * width + col]
 
 
@@ -23,7 +30,7 @@ class TestGameEncoding:
 
     def test_encode_game_planes_empty(self) -> None:
         game = Game(9, 9)
-        data, num_planes, height, width = game.encode_game_planes()
+        data, _num_planes, height, width = game.encode_game_planes()
 
         # First 16 planes should be zeros (current, opponent x 8 history)
         for plane_idx in range(16):
@@ -42,7 +49,7 @@ class TestGameEncoding:
         game.make_move(Move.place(3, 3))  # White at (3, 3)
 
         # Now it's Black's turn, so perspective is Black
-        data, num_planes, height, width = game.encode_game_planes()
+        data, _num_planes, height, width = game.encode_game_planes()
 
         # Plane 0: current player (Black) stones
         # Plane 1: opponent (White) stones
@@ -62,7 +69,7 @@ class TestGameEncoding:
 
         # After Black moves, White's turn
         game.make_move(Move.place(4, 4))
-        data, num_planes, height, width = game.encode_game_planes()
+        data, _num_planes, height, width = game.encode_game_planes()
         assert get_plane_value(data, 16, 0, 0, height, width) == 0.0
 
     def test_encode_game_planes_different_sizes(self) -> None:

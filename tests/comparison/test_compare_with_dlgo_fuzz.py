@@ -4,7 +4,7 @@ import random
 import sys
 import time
 
-import rust_go
+import spooky_go
 
 # Add dlgo submodule to path
 dlgo_path = Path(__file__).parent / "deep_learning_and_the_game_of_go" / "code"
@@ -15,22 +15,22 @@ from dlgo.gotypes import Player, Point
 from dlgo.scoring import compute_game_result
 
 
-def _rust_move_to_dlgo(rust_move: rust_go.Move) -> Move:
+def _rust_move_to_dlgo(rust_move: spooky_go.Move) -> Move:
     if rust_move.is_pass():
         return Move.pass_turn()
-    # rust-go is 0-indexed, dlgo is 1-indexed
+    # spooky_go is 0-indexed, dlgo is 1-indexed
     return Move.play(Point(row=rust_move.row() + 1, col=rust_move.col() + 1))
 
 
-def _dlgo_move_to_rust(dlgo_move: Move) -> rust_go.Move:
+def _dlgo_move_to_rust(dlgo_move: Move) -> spooky_go.Move:
     if dlgo_move.is_pass:
-        return rust_go.Move.pass_move()
-    # dlgo is 1-indexed, rust-go is 0-indexed
+        return spooky_go.Move.pass_move()
+    # dlgo is 1-indexed, spooky_go is 0-indexed
     assert dlgo_move.point is not None
-    return rust_go.Move.place(dlgo_move.point.col - 1, dlgo_move.point.row - 1)
+    return spooky_go.Move.place(dlgo_move.point.col - 1, dlgo_move.point.row - 1)
 
 
-def _get_rust_board_state(rust_game: rust_go.Game) -> list[list[int | None]]:
+def _get_rust_board_state(rust_game: spooky_go.Game) -> list[list[int | None]]:
     board = rust_game.board()
     state = []
     for row in range(board.height()):
@@ -51,9 +51,9 @@ def _get_dlgo_board_state(dlgo_game: GameState) -> list[list[int | None]]:
             if stone is None:
                 row_state.append(None)
             elif stone == Player.black:
-                row_state.append(rust_go.BLACK)
+                row_state.append(spooky_go.BLACK)
             else:
-                row_state.append(rust_go.WHITE)
+                row_state.append(spooky_go.WHITE)
         state.append(row_state)
     return state
 
@@ -66,7 +66,7 @@ def _board_to_string(state: list[list[int | None]], size: int) -> str:
             piece = state[row][col]
             if piece is None:
                 line += ". "
-            elif piece == rust_go.BLACK:
+            elif piece == spooky_go.BLACK:
                 line += "X "
             else:
                 line += "O "
@@ -75,7 +75,7 @@ def _board_to_string(state: list[list[int | None]], size: int) -> str:
 
 
 def _compare_game_states(
-    rust_game: rust_go.Game,
+    rust_game: spooky_go.Game,
     dlgo_game: GameState,
     move_history: list[str],
     board_size: int,
@@ -92,7 +92,7 @@ def _compare_game_states(
 
     # Compare turn
     rust_turn = rust_game.turn()
-    dlgo_turn = rust_go.BLACK if dlgo_game.next_player == Player.black else rust_go.WHITE
+    dlgo_turn = spooky_go.BLACK if dlgo_game.next_player == Player.black else spooky_go.WHITE
     assert rust_turn == dlgo_turn, f"Turn mismatch after moves {move_history}\nRust: {rust_turn}, dlgo: {dlgo_turn}"
 
     # Compare game over status
@@ -102,13 +102,13 @@ def _compare_game_states(
         f"Game over mismatch after moves {move_history}\nRust: {rust_over}, dlgo: {dlgo_over}"
     )
 
-    # Note: Legal moves comparison is skipped because rust-go uses simple ko
+    # Note: Legal moves comparison is skipped because spooky_go uses simple ko
     # while dlgo uses positional superko. This is a known implementation difference.
     # The core game state (board, turn, game over) is verified above.
 
 
 def _compare_scores(
-    rust_game: rust_go.Game,
+    rust_game: spooky_go.Game,
     dlgo_game: GameState,
     move_history: list[str],
     board_size: int,
@@ -137,7 +137,7 @@ def _compare_scores(
     assert rust_outcome is not None
 
     rust_winner = rust_outcome.winner()
-    dlgo_winner = rust_go.BLACK if dlgo_result.winner == Player.black else rust_go.WHITE
+    dlgo_winner = spooky_go.BLACK if dlgo_result.winner == Player.black else spooky_go.WHITE
 
     assert rust_winner == dlgo_winner, (
         f"Winner mismatch after moves {move_history}\n"
@@ -156,7 +156,7 @@ def _play_random_game(
         random.seed(seed)
 
     # Use with_options to set min_moves=0 so double-pass ends game immediately (matching dlgo behavior)
-    rust_game = rust_go.Game.with_options(
+    rust_game = spooky_go.Game.with_options(
         width=board_size,
         height=board_size,
         komi=7.5,
@@ -367,7 +367,7 @@ def test_specific_capture_sequences() -> None:
 
     for sequence in test_sequences:
         # Use with_options to set min_moves=0 to match dlgo behavior
-        rust_game = rust_go.Game.with_options(
+        rust_game = spooky_go.Game.with_options(
             width=board_size,
             height=board_size,
             komi=7.5,
@@ -378,7 +378,7 @@ def test_specific_capture_sequences() -> None:
         move_history: list[str] = []
 
         for col, row in sequence:
-            rust_move = rust_go.Move.place(col, row)
+            rust_move = spooky_go.Move.place(col, row)
             dlgo_move = Move.play(Point(row=row + 1, col=col + 1))
 
             rust_game.make_move(rust_move)
@@ -400,7 +400,7 @@ def test_ko_rule() -> None:
     ]
 
     # Use with_options to set min_moves=0 to match dlgo behavior
-    rust_game = rust_go.Game.with_options(
+    rust_game = spooky_go.Game.with_options(
         width=board_size,
         height=board_size,
         komi=7.5,
@@ -410,7 +410,7 @@ def test_ko_rule() -> None:
     dlgo_game = GameState.new_game(board_size)
 
     for col, row in setup_moves:
-        rust_move = rust_go.Move.place(col, row)
+        rust_move = spooky_go.Move.place(col, row)
         dlgo_move = Move.play(Point(row=row + 1, col=col + 1))
         rust_game.make_move(rust_move)
         dlgo_game = dlgo_game.apply_move(dlgo_move)

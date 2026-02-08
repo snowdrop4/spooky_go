@@ -134,7 +134,7 @@ wheels = [
 ]
 
 [[package]]
-name = "rust-go"
+name = "spooky_go"
 version = "0.2.19"
 source = { editable = "." }
 

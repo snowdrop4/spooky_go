@@ -1,4 +1,4 @@
-from rust_go import BLACK, WHITE, Game, Move
+from spooky_go import BLACK, WHITE, Game, Move
 
 
 class TestOutcomeFromGame:

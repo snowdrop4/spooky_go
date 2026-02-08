@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 import time
 
-import rust_go
+import spooky_go
 
 # Add dlgo submodule to path
 dlgo_path = Path(__file__).parent / "deep_learning_and_the_game_of_go" / "code"
@@ -15,10 +15,10 @@ from dlgo.gotypes import Point
 def test_initial_move_generation_speed() -> None:
     iterations = 1000
 
-    # Time rust-go
+    # Time spooky_go
     rust_start = time.time()
     for _ in range(iterations):
-        game = rust_go.Game(9, 9)
+        game = spooky_go.Game(9, 9)
         moves = game.legal_moves()
         assert len(moves) == 82  # 81 positions + pass
     rust_time = time.time() - rust_start
@@ -32,7 +32,7 @@ def test_initial_move_generation_speed() -> None:
     dlgo_time = time.time() - dlgo_start
 
     print(f"\nMove generation 9x9 ({iterations} iterations):")
-    print(f"  rust-go: {rust_time:.4f}s")
+    print(f"  spooky_go: {rust_time:.4f}s")
     print(f"  dlgo: {dlgo_time:.4f}s")
     print(f"  Speedup: {dlgo_time / rust_time:.2f}x")
 
@@ -40,10 +40,10 @@ def test_initial_move_generation_speed() -> None:
 def test_initial_move_generation_speed_19x19() -> None:
     iterations = 100
 
-    # Time rust-go
+    # Time spooky_go
     rust_start = time.time()
     for _ in range(iterations):
-        game = rust_go.Game(19, 19)
+        game = spooky_go.Game(19, 19)
         moves = game.legal_moves()
         assert len(moves) == 362  # 361 positions + pass
     rust_time = time.time() - rust_start
@@ -57,7 +57,7 @@ def test_initial_move_generation_speed_19x19() -> None:
     dlgo_time = time.time() - dlgo_start
 
     print(f"\nMove generation 19x19 ({iterations} iterations):")
-    print(f"  rust-go: {rust_time:.4f}s")
+    print(f"  spooky_go: {rust_time:.4f}s")
     print(f"  dlgo: {dlgo_time:.4f}s")
     print(f"  Speedup: {dlgo_time / rust_time:.2f}x")
 
@@ -65,11 +65,11 @@ def test_initial_move_generation_speed_19x19() -> None:
 def test_move_making_speed() -> None:
     iterations = 1000
 
-    # Time rust-go
+    # Time spooky_go
     rust_start = time.time()
     for _ in range(iterations):
-        game = rust_go.Game(9, 9)
-        move = rust_go.Move.place(4, 4)
+        game = spooky_go.Game(9, 9)
+        move = spooky_go.Move.place(4, 4)
         game.make_move(move)
     rust_time = time.time() - rust_start
 
@@ -82,7 +82,7 @@ def test_move_making_speed() -> None:
     dlgo_time = time.time() - dlgo_start
 
     print(f"\nMove making ({iterations} iterations):")
-    print(f"  rust-go: {rust_time:.4f}s")
+    print(f"  spooky_go: {rust_time:.4f}s")
     print(f"  dlgo: {dlgo_time:.4f}s")
     print(f"  Speedup: {dlgo_time / rust_time:.2f}x")
 
@@ -91,7 +91,7 @@ def test_move_sequence_speed() -> None:
     iterations = 500
 
     # A simple sequence of moves (alternating corners and center)
-    # rust-go uses 0-indexed, dlgo uses 1-indexed
+    # spooky_go uses 0-indexed, dlgo uses 1-indexed
     rust_moves_coords = [
         (2, 2),
         (6, 6),
@@ -118,12 +118,12 @@ def test_move_sequence_speed() -> None:
         (5, 3),
     ]
 
-    # Time rust-go
+    # Time spooky_go
     rust_start = time.time()
     for _ in range(iterations):
-        game = rust_go.Game(9, 9)
+        game = spooky_go.Game(9, 9)
         for col, row in rust_moves_coords:
-            move = rust_go.Move.place(col, row)
+            move = spooky_go.Move.place(col, row)
             game.make_move(move)
     rust_time = time.time() - rust_start
 
@@ -137,14 +137,14 @@ def test_move_sequence_speed() -> None:
     dlgo_time = time.time() - dlgo_start
 
     print(f"\nMove sequence ({iterations} iterations, {len(rust_moves_coords)} moves each):")
-    print(f"  rust-go: {rust_time:.4f}s")
+    print(f"  spooky_go: {rust_time:.4f}s")
     print(f"  dlgo: {dlgo_time:.4f}s")
     print(f"  Speedup: {dlgo_time / rust_time:.2f}x")
 
 
 def test_game_simulation_speed() -> None:
     def simulate_game_rust(moves_count: int) -> int:
-        game = rust_go.Game(9, 9)
+        game = spooky_go.Game(9, 9)
         moves_made = 0
 
         while moves_made < moves_count and not game.is_over():
@@ -178,7 +178,7 @@ def test_game_simulation_speed() -> None:
     iterations = 100
     moves_count = 30
 
-    # Time rust-go
+    # Time spooky_go
     rust_start = time.time()
     for _ in range(iterations):
         simulate_game_rust(moves_count)
@@ -191,7 +191,7 @@ def test_game_simulation_speed() -> None:
     dlgo_time = time.time() - dlgo_start
 
     print(f"\nGame simulation ({iterations} games, {moves_count} moves each):")
-    print(f"  rust-go: {rust_time:.4f}s")
+    print(f"  spooky_go: {rust_time:.4f}s")
     print(f"  dlgo: {dlgo_time:.4f}s")
     print(f"  Speedup: {dlgo_time / rust_time:.2f}x")
 
@@ -200,7 +200,7 @@ def test_legal_moves_after_captures_speed() -> None:
     iterations = 500
 
     # Set up a position with a capture
-    # rust-go: 0-indexed
+    # spooky_go: 0-indexed
     rust_setup_moves = [
         (1, 0),  # B
         (0, 0),  # W - will be captured
@@ -214,12 +214,12 @@ def test_legal_moves_after_captures_speed() -> None:
         (2, 1),  # B - captures W
     ]
 
-    # Time rust-go
+    # Time spooky_go
     rust_start = time.time()
     for _ in range(iterations):
-        game = rust_go.Game(9, 9)
+        game = spooky_go.Game(9, 9)
         for col, row in rust_setup_moves:
-            game.make_move(rust_go.Move.place(col, row))
+            game.make_move(spooky_go.Move.place(col, row))
         _ = game.legal_moves()
     rust_time = time.time() - rust_start
 
@@ -233,6 +233,6 @@ def test_legal_moves_after_captures_speed() -> None:
     dlgo_time = time.time() - dlgo_start
 
     print(f"\nLegal moves after capture ({iterations} iterations):")
-    print(f"  rust-go: {rust_time:.4f}s")
+    print(f"  spooky_go: {rust_time:.4f}s")
     print(f"  dlgo: {dlgo_time:.4f}s")
     print(f"  Speedup: {dlgo_time / rust_time:.2f}x")
