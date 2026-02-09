@@ -171,23 +171,33 @@ impl Game {
     /// Check if placing a stone at `idx` for `player` would be suicide.
     /// Zero heap allocations — works entirely on stack-based bitboards.
     fn would_be_suicide(&self, idx: usize, player: Player) -> bool {
+        let nw = self.geo.nw;
         let bit = Bitboard::single(idx);
-        let own = self.board.stones_for(player) | bit;
+        let own = self.board.stones_for(player).or_w(bit, nw);
         let opp = self.board.stones_for(player.opposite());
-        let empty = self.geo.board_mask & !(own | opp);
+        let occupied = own.or_w(opp, nw);
+        let empty = self.geo.board_mask.andnot_w(occupied, nw);
 
-        // Find the group containing the new stone
+        // Fast path: if the new stone itself has any empty neighbor,
+        // the group containing it has at least one liberty → not suicide.
+        // This skips the expensive flood-fill for ~95% of positions.
+        let bit_neighbors = self.geo.neighbors(&bit);
+        if bit_neighbors.and_w(empty, nw).is_nonzero_w(nw) {
+            return false;
+        }
+
+        // Slow path: stone has no empty neighbors. Flood-fill to find full group.
         let group = self.geo.flood_fill(bit, own);
 
         // Check if this group has any liberties
         let group_neighbors = self.geo.neighbors(&group);
-        if (group_neighbors & empty).is_nonzero() {
+        if group_neighbors.and_w(empty, nw).is_nonzero_w(nw) {
             return false; // has liberties — not suicide
         }
 
         // No liberties, but check if any adjacent opponent group would be captured
-        let adjacent_opponent = group_neighbors & opp;
-        if adjacent_opponent.is_empty() {
+        let adjacent_opponent = group_neighbors.and_w(opp, nw);
+        if adjacent_opponent.is_empty_w(nw) {
             return true; // no adjacent opponents to capture — it's suicide
         }
 
@@ -198,13 +208,13 @@ impl Game {
             let opp_group = self.geo.flood_fill(opp_seed, opp);
 
             // Remove this entire group from remaining so we don't re-check it
-            remaining_adj_opp &= !opp_group;
+            remaining_adj_opp = remaining_adj_opp.andnot_w(opp_group, nw);
 
             // This opponent group's liberties (excluding the new stone's position)
             let opp_group_neighbors = self.geo.neighbors(&opp_group);
-            let opp_liberties = opp_group_neighbors & empty;
+            let opp_liberties = opp_group_neighbors.and_w(empty, nw);
 
-            if opp_liberties.is_empty() {
+            if opp_liberties.is_empty_w(nw) {
                 // This opponent group has no liberties (our new stone took the last one)
                 // → it would be captured → not suicide
                 return false;

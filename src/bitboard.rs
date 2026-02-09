@@ -143,6 +143,122 @@ impl Bitboard {
         BitIterator {
             words: self.words,
             word_index: 0,
+            word_limit: 16,
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Word-count-bounded operations for hot paths.
+    // `nw` = number of active words to process. Words beyond `nw` are
+    // assumed zero in inputs and left zero in outputs.
+    // ------------------------------------------------------------------
+
+    /// Shift left bounded to `nw` output words. Assumes 0 < n < 64.
+    #[inline]
+    pub(crate) fn shift_left_w(&self, n: usize, nw: usize) -> Self {
+        debug_assert!(n > 0 && n < 64);
+        let mut out = [0u64; 16];
+        out[0] = self.words[0] << n;
+        for i in 1..nw {
+            out[i] = (self.words[i] << n) | (self.words[i - 1] >> (64 - n));
+        }
+        Bitboard { words: out }
+    }
+
+    /// Shift right bounded to `nw` input words. Assumes 0 < n < 64.
+    #[inline]
+    pub(crate) fn shift_right_w(&self, n: usize, nw: usize) -> Self {
+        debug_assert!(n > 0 && n < 64);
+        let mut out = [0u64; 16];
+        for i in 0..nw {
+            out[i] = self.words[i] >> n;
+            if i + 1 < 16 {
+                out[i] |= self.words[i + 1] << (64 - n);
+            }
+        }
+        Bitboard { words: out }
+    }
+
+    /// Bitwise AND bounded to `nw` words.
+    #[inline]
+    pub(crate) fn and_w(self, rhs: Bitboard, nw: usize) -> Bitboard {
+        let mut out = [0u64; 16];
+        for i in 0..nw {
+            out[i] = self.words[i] & rhs.words[i];
+        }
+        Bitboard { words: out }
+    }
+
+    /// Bitwise OR bounded to `nw` words.
+    #[inline]
+    pub(crate) fn or_w(self, rhs: Bitboard, nw: usize) -> Bitboard {
+        let mut out = [0u64; 16];
+        for i in 0..nw {
+            out[i] = self.words[i] | rhs.words[i];
+        }
+        Bitboard { words: out }
+    }
+
+    /// `self & !rhs` bounded to `nw` words. Avoids materializing the full NOT.
+    #[inline]
+    pub(crate) fn andnot_w(self, rhs: Bitboard, nw: usize) -> Bitboard {
+        let mut out = [0u64; 16];
+        for i in 0..nw {
+            out[i] = self.words[i] & !rhs.words[i];
+        }
+        Bitboard { words: out }
+    }
+
+    /// Equality check bounded to `nw` words.
+    #[inline]
+    pub(crate) fn eq_w(&self, other: &Bitboard, nw: usize) -> bool {
+        for i in 0..nw {
+            if self.words[i] != other.words[i] {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// True if any bit is set, checking only `nw` words.
+    #[inline]
+    pub(crate) fn is_nonzero_w(&self, nw: usize) -> bool {
+        for i in 0..nw {
+            if self.words[i] != 0 {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// True if no bits are set, checking only `nw` words.
+    #[inline]
+    pub(crate) fn is_empty_w(&self, nw: usize) -> bool {
+        for i in 0..nw {
+            if self.words[i] != 0 {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Population count bounded to `nw` words.
+    #[inline]
+    pub(crate) fn count_w(&self, nw: usize) -> u32 {
+        let mut c = 0u32;
+        for i in 0..nw {
+            c += self.words[i].count_ones();
+        }
+        c
+    }
+
+    /// Iterate over set-bit indices, only scanning `nw` words.
+    #[inline]
+    pub(crate) fn iter_ones_w(&self, nw: usize) -> BitIterator {
+        BitIterator {
+            words: self.words,
+            word_index: 0,
+            word_limit: nw,
         }
     }
 }
@@ -205,13 +321,14 @@ impl Not for Bitboard {
 pub struct BitIterator {
     words: [u64; 16],
     word_index: usize,
+    word_limit: usize,
 }
 
 impl Iterator for BitIterator {
     type Item = usize;
     #[inline]
     fn next(&mut self) -> Option<usize> {
-        while self.word_index < 16 {
+        while self.word_index < self.word_limit {
             let w = self.words[self.word_index];
             if w != 0 {
                 let bit = w.trailing_zeros() as usize;
@@ -231,6 +348,8 @@ pub struct BoardGeometry {
     pub width: usize,
     pub height: usize,
     pub area: usize,
+    /// Number of active u64 words: `ceil(area / 64)`.
+    pub nw: usize,
     /// Mask with 1s at all valid board positions (indices 0..area).
     pub board_mask: Bitboard,
     /// board_mask minus column 0 (used to prevent left-wrap in right-shift neighbor).
@@ -245,6 +364,7 @@ impl BoardGeometry {
         debug_assert!(width >= 2 && width <= 32);
         debug_assert!(height >= 2 && height <= 32);
         let area = width * height;
+        let nw = (area + 63) / 64;
 
         let mut board_mask = Bitboard::empty();
         for i in 0..area {
@@ -265,6 +385,7 @@ impl BoardGeometry {
             width,
             height,
             area,
+            nw,
             board_mask,
             not_col0,
             not_col_last,
@@ -274,25 +395,37 @@ impl BoardGeometry {
     /// Compute the set of all orthogonal neighbors of every bit in `bb`.
     #[inline]
     pub fn neighbors(&self, bb: &Bitboard) -> Bitboard {
+        let nw = self.nw;
+        // shift_left can spill into one additional word
+        let nw1 = (nw + 1).min(16);
+
         // right: col+1 = shift left by 1, mask off column 0 wraps
-        let right = bb.shift_left(1) & self.not_col0;
+        let right = bb.shift_left_w(1, nw1).and_w(self.not_col0, nw1);
         // left: col-1 = shift right by 1, mask off last-column wraps
-        let left = bb.shift_right(1) & self.not_col_last;
+        let left = bb.shift_right_w(1, nw).and_w(self.not_col_last, nw);
         // down: row+1 = shift left by width
-        let down = bb.shift_left(self.width);
+        let down = bb.shift_left_w(self.width, nw1);
         // up: row-1 = shift right by width
-        let up = bb.shift_right(self.width);
-        (right | left | down | up) & self.board_mask
+        let up = bb.shift_right_w(self.width, nw);
+
+        // Combine all four directions, then mask to valid positions
+        right
+            .or_w(left, nw1)
+            .or_w(down, nw1)
+            .or_w(up, nw1)
+            .and_w(self.board_mask, nw)
     }
 
     /// Flood-fill from `seed` through `mask`. Returns the connected component
     /// of `seed` within `mask`.
     #[inline]
     pub fn flood_fill(&self, seed: Bitboard, mask: Bitboard) -> Bitboard {
-        let mut filled = seed & mask;
+        let nw = self.nw;
+        let mut filled = seed.and_w(mask, nw);
         loop {
-            let expanded = (filled | self.neighbors(&filled)) & mask;
-            if expanded == filled {
+            let nbrs = self.neighbors(&filled);
+            let expanded = filled.or_w(nbrs, nw).and_w(mask, nw);
+            if expanded.eq_w(&filled, nw) {
                 return filled;
             }
             filled = expanded;
@@ -427,6 +560,7 @@ mod tests {
     fn test_geometry_9x9() {
         let geo = BoardGeometry::new(9, 9);
         assert_eq!(geo.area, 81);
+        assert_eq!(geo.nw, 2);
         assert_eq!(geo.board_mask.count(), 81);
 
         // Column 0 positions: 0, 9, 18, 27, ...
@@ -566,5 +700,103 @@ mod tests {
         bb &= Bitboard::single(2);
         assert!(!bb.get(1));
         assert!(bb.get(2));
+    }
+
+    #[test]
+    fn test_bounded_shift_matches_unbounded() {
+        // For 9x9 (nw=2), bounded shifts should produce the same result
+        // as unbounded for bits within the board
+        let geo = BoardGeometry::new(9, 9);
+        let nw1 = geo.nw + 1;
+
+        // Test shift_left_w vs shift_left for various positions
+        for idx in [0, 1, 8, 9, 40, 63, 64, 79, 80] {
+            let bb = Bitboard::single(idx);
+            let full = bb.shift_left(1) & geo.board_mask;
+            let bounded = bb.shift_left_w(1, nw1).and_w(geo.board_mask, geo.nw);
+            assert_eq!(full, bounded, "shift_left mismatch at idx={}", idx);
+
+            let full_w = bb.shift_left(9) & geo.board_mask;
+            let bounded_w = bb.shift_left_w(9, nw1).and_w(geo.board_mask, geo.nw);
+            assert_eq!(full_w, bounded_w, "shift_left(width) mismatch at idx={}", idx);
+        }
+
+        // Test shift_right_w
+        for idx in [0, 1, 8, 9, 40, 63, 64, 79, 80] {
+            let bb = Bitboard::single(idx);
+            let full = bb.shift_right(1) & geo.board_mask;
+            let bounded = bb.shift_right_w(1, geo.nw).and_w(geo.board_mask, geo.nw);
+            assert_eq!(full, bounded, "shift_right mismatch at idx={}", idx);
+        }
+    }
+
+    #[test]
+    fn test_bounded_neighbors_matches_unbounded() {
+        // Verify bounded neighbors produces identical results for all board sizes
+        for (w, h) in [(5, 5), (8, 8), (9, 9), (13, 7), (19, 19)] {
+            let geo = BoardGeometry::new(w, h);
+            for idx in 0..geo.area {
+                let bb = Bitboard::single(idx);
+                let nbrs = geo.neighbors(&bb);
+                // Verify result is within board
+                assert_eq!(nbrs & geo.board_mask, nbrs,
+                    "neighbors outside board at {}x{} idx={}", w, h, idx);
+                // Verify correct neighbor count
+                let col = idx % w;
+                let row = idx / w;
+                let mut expected = 0u32;
+                if col > 0 { expected += 1; }
+                if col + 1 < w { expected += 1; }
+                if row > 0 { expected += 1; }
+                if row + 1 < h { expected += 1; }
+                assert_eq!(nbrs.count(), expected,
+                    "wrong neighbor count at {}x{} col={} row={}", w, h, col, row);
+            }
+        }
+    }
+
+    #[test]
+    fn test_nw_values() {
+        assert_eq!(BoardGeometry::new(2, 2).nw, 1);   // 4 bits
+        assert_eq!(BoardGeometry::new(5, 5).nw, 1);   // 25 bits
+        assert_eq!(BoardGeometry::new(8, 8).nw, 1);   // 64 bits
+        assert_eq!(BoardGeometry::new(9, 9).nw, 2);   // 81 bits
+        assert_eq!(BoardGeometry::new(19, 19).nw, 6);  // 361 bits
+        assert_eq!(BoardGeometry::new(32, 32).nw, 16); // 1024 bits
+    }
+
+    #[test]
+    fn test_andnot_w() {
+        let a = Bitboard::single(0) | Bitboard::single(5) | Bitboard::single(10);
+        let b = Bitboard::single(5) | Bitboard::single(20);
+        let result = a.andnot_w(b, 1); // only word 0 (bits 0-63)
+        assert!(result.get(0));
+        assert!(!result.get(5));
+        assert!(result.get(10));
+        assert!(!result.get(20));
+    }
+
+    #[test]
+    fn test_iter_ones_w() {
+        // Bits in words 0, 1, and 3
+        let bb = Bitboard::single(3) | Bitboard::single(64) | Bitboard::single(200);
+        // Only scan 2 words — should find bits 3 and 64
+        let indices: Vec<usize> = bb.iter_ones_w(2).collect();
+        assert_eq!(indices, vec![3, 64]);
+    }
+
+    #[test]
+    fn test_8x8_word_boundary() {
+        // 8x8 = 64 bits = exactly 1 word. shift_left(1) of bit 63 spills to word 1.
+        let geo = BoardGeometry::new(8, 8);
+        assert_eq!(geo.nw, 1);
+
+        // bit 63 = col 7, row 7 (top-right corner of 8x8)
+        let corner = Bitboard::single(63);
+        let nbrs = geo.neighbors(&corner);
+        // col 7, row 7: left=62, down (row 6)=55. No right (col 8 invalid), no up (row 8 invalid)
+        assert!(nbrs.get(62));
+        assert!(nbrs.get(55));
+        assert_eq!(nbrs.count(), 2);
     }
 }
