@@ -613,7 +613,7 @@ mod tests {
 
         // Expected: left=16, up=8, down=26 (no right — must not wrap to col=0 of next row)
         assert!(nbrs.get(16)); // left
-        assert!(nbrs.get(8));  // up
+        assert!(nbrs.get(8)); // up
         assert!(nbrs.get(26)); // down
         assert!(!nbrs.get(18)); // must NOT wrap
         assert_eq!(nbrs.count(), 3);
@@ -628,7 +628,7 @@ mod tests {
 
         // Expected: right=19, up=9, down=27 (no left — must not wrap to col=8 of previous row)
         assert!(nbrs.get(19)); // right
-        assert!(nbrs.get(9));  // up
+        assert!(nbrs.get(9)); // up
         assert!(nbrs.get(27)); // down
         assert!(!nbrs.get(17)); // must NOT wrap
         assert_eq!(nbrs.count(), 3);
@@ -718,7 +718,11 @@ mod tests {
 
             let full_w = bb.shift_left(9) & geo.board_mask;
             let bounded_w = bb.shift_left_w(9, nw1).and_w(geo.board_mask, geo.nw);
-            assert_eq!(full_w, bounded_w, "shift_left(width) mismatch at idx={}", idx);
+            assert_eq!(
+                full_w, bounded_w,
+                "shift_left(width) mismatch at idx={}",
+                idx
+            );
         }
 
         // Test shift_right_w
@@ -739,29 +743,50 @@ mod tests {
                 let bb = Bitboard::single(idx);
                 let nbrs = geo.neighbors(&bb);
                 // Verify result is within board
-                assert_eq!(nbrs & geo.board_mask, nbrs,
-                    "neighbors outside board at {}x{} idx={}", w, h, idx);
+                assert_eq!(
+                    nbrs & geo.board_mask,
+                    nbrs,
+                    "neighbors outside board at {}x{} idx={}",
+                    w,
+                    h,
+                    idx
+                );
                 // Verify correct neighbor count
                 let col = idx % w;
                 let row = idx / w;
                 let mut expected = 0u32;
-                if col > 0 { expected += 1; }
-                if col + 1 < w { expected += 1; }
-                if row > 0 { expected += 1; }
-                if row + 1 < h { expected += 1; }
-                assert_eq!(nbrs.count(), expected,
-                    "wrong neighbor count at {}x{} col={} row={}", w, h, col, row);
+                if col > 0 {
+                    expected += 1;
+                }
+                if col + 1 < w {
+                    expected += 1;
+                }
+                if row > 0 {
+                    expected += 1;
+                }
+                if row + 1 < h {
+                    expected += 1;
+                }
+                assert_eq!(
+                    nbrs.count(),
+                    expected,
+                    "wrong neighbor count at {}x{} col={} row={}",
+                    w,
+                    h,
+                    col,
+                    row
+                );
             }
         }
     }
 
     #[test]
     fn test_nw_values() {
-        assert_eq!(BoardGeometry::new(2, 2).nw, 1);   // 4 bits
-        assert_eq!(BoardGeometry::new(5, 5).nw, 1);   // 25 bits
-        assert_eq!(BoardGeometry::new(8, 8).nw, 1);   // 64 bits
-        assert_eq!(BoardGeometry::new(9, 9).nw, 2);   // 81 bits
-        assert_eq!(BoardGeometry::new(19, 19).nw, 6);  // 361 bits
+        assert_eq!(BoardGeometry::new(2, 2).nw, 1); // 4 bits
+        assert_eq!(BoardGeometry::new(5, 5).nw, 1); // 25 bits
+        assert_eq!(BoardGeometry::new(8, 8).nw, 1); // 64 bits
+        assert_eq!(BoardGeometry::new(9, 9).nw, 2); // 81 bits
+        assert_eq!(BoardGeometry::new(19, 19).nw, 6); // 361 bits
         assert_eq!(BoardGeometry::new(32, 32).nw, 16); // 1024 bits
     }
 

@@ -61,10 +61,7 @@ impl<'de> Deserialize<'de> for Game {
             };
 
             if !game.make_move(&mv) {
-                return Err(serde::de::Error::custom(format!(
-                    "Invalid move: {:?}",
-                    mv
-                )));
+                return Err(serde::de::Error::custom(format!("Invalid move: {:?}", mv)));
             }
         }
 
@@ -78,9 +75,7 @@ impl Serialize for Move {
         S: Serializer,
     {
         match self {
-            Move::Place { col, row } => {
-                serializer.serialize_str(&format!("{},{}", col, row))
-            }
+            Move::Place { col, row } => serializer.serialize_str(&format!("{},{}", col, row)),
             Move::Pass => serializer.serialize_str("pass"),
         }
     }

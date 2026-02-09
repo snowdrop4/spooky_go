@@ -36,9 +36,9 @@ impl Game {
 
     pub fn with_komi(width: usize, height: usize, komi: f32) -> Self {
         let board_size = width * height;
-        let min_moves = board_size / 2;
+        let min_moves_before_pass_ends = board_size / 2;
         let max_moves = board_size * 3;
-        Self::with_options(width, height, komi, min_moves, max_moves)
+        Self::with_options(width, height, komi, min_moves_before_pass_ends, max_moves)
     }
 
     pub fn with_options(
@@ -327,8 +327,9 @@ impl Game {
                 let mut remaining = adjacent_opponent;
                 while let Some(opp_idx) = remaining.lowest_bit_index() {
                     let opp_seed = Bitboard::single(opp_idx);
-                    let opp_group =
-                        self.geo.flood_fill(opp_seed, self.board.stones_for(opponent));
+                    let opp_group = self
+                        .geo
+                        .flood_fill(opp_seed, self.board.stones_for(opponent));
 
                     // Remove this group from remaining
                     remaining &= !opp_group;
@@ -353,16 +354,15 @@ impl Game {
                 // Ko detection
                 if total_captured == 1 {
                     if let Some(cap_idx) = single_capture_idx {
-                        let placed_group =
-                            self.geo
-                                .flood_fill(bit, self.board.stones_for(self.current_player));
+                        let placed_group = self
+                            .geo
+                            .flood_fill(bit, self.board.stones_for(self.current_player));
                         if placed_group.count() == 1 {
                             let placed_neighbors = self.geo.neighbors(&placed_group);
                             let placed_liberties =
                                 placed_neighbors & self.board.empty_squares(self.geo.board_mask);
                             if placed_liberties.count() == 1 {
-                                self.ko_point =
-                                    Some(Position::from_index(cap_idx, self.geo.width));
+                                self.ko_point = Some(Position::from_index(cap_idx, self.geo.width));
                             }
                         }
                     }

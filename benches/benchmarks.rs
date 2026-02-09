@@ -89,9 +89,7 @@ fn bench_encode_game_planes_19x19(c: &mut Criterion) {
 
 fn bench_score(c: &mut Criterion) {
     let game = setup_midgame(9, 9);
-    c.bench_function("score", |b| {
-        b.iter(|| black_box(game.score()))
-    });
+    c.bench_function("score", |b| b.iter(|| black_box(game.score())));
 }
 
 // ---------------------------------------------------------------------------
