@@ -88,9 +88,9 @@ fn bench_encode_game_planes_19x19(c: &mut Criterion) {
     });
 }
 
-fn bench_score(c: &mut Criterion) {
+fn bench_outcome(c: &mut Criterion) {
     let game = setup_midgame(9, 9);
-    c.bench_function("score", |b| b.iter(|| black_box(game.score())));
+    c.bench_function("outcome", |b| b.iter(|| black_box(game.outcome())));
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ fn bench_random_playout_9x9(c: &mut Criterion) {
                 let mv = moves.choose(&mut rng).unwrap();
                 game.make_move(mv);
             }
-            black_box(game.score())
+            black_box(game.outcome())
         })
     });
 }
@@ -122,7 +122,7 @@ fn bench_random_playout_19x19(c: &mut Criterion) {
                 let mv = moves.choose(&mut rng).unwrap();
                 game.make_move(mv);
             }
-            black_box(game.score())
+            black_box(game.outcome())
         })
     });
 }
@@ -146,16 +146,23 @@ fn bench_self_play_step(c: &mut Criterion) {
 }
 
 criterion_group!(
-    benches,
-    bench_legal_moves_9x9,
-    bench_legal_moves_19x19,
-    bench_make_move,
-    bench_make_unmake,
-    bench_encode_game_planes_9x9,
-    bench_encode_game_planes_19x19,
-    bench_score,
-    bench_random_playout_9x9,
-    bench_random_playout_19x19,
-    bench_self_play_step,
+    name = benches;
+    config = Criterion::default().sample_size(100_000);
+    targets =
+        bench_legal_moves_9x9,
+        bench_legal_moves_19x19,
+        bench_make_move,
+        bench_make_unmake,
+        bench_encode_game_planes_9x9,
+        bench_encode_game_planes_19x19,
+        bench_outcome,
+        bench_self_play_step,
 );
-criterion_main!(benches);
+criterion_group!(
+    name = playouts;
+    config = Criterion::default().sample_size(10_000);
+    targets =
+        bench_random_playout_9x9,
+        bench_random_playout_19x19,
+);
+criterion_main!(benches, playouts);
