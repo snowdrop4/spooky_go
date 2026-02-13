@@ -1,9 +1,10 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
+use rand::prelude::IndexedRandom;
 use rand::rngs::StdRng;
-use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use spooky_go::encode::encode_game_planes;
 use spooky_go::game::Game;
+use std::hint::black_box;
 
 /// Play ~20 random moves on a fresh game to create a realistic mid-game position.
 /// Uses a fixed seed for reproducibility across benchmark runs.
