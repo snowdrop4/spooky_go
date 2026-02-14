@@ -1,14 +1,14 @@
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
-use crate::bitboard::{Bitboard, BoardGeometry};
+use crate::bitboard::{nw_for_board, Bitboard, BoardGeometry};
 use crate::board::{Board, STANDARD_COLS, STANDARD_ROWS};
 use crate::outcome::GameOutcome;
 use crate::player::Player;
 use crate::position::Position;
 use crate::r#move::Move;
 
-fn compute_position_hash(board: &Board, player: Player) -> u64 {
+fn compute_position_hash<const NW: usize>(board: &Board<NW>, player: Player) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     board.hash(&mut hasher);
     (player as i8).hash(&mut hasher);
@@ -16,20 +16,20 @@ fn compute_position_hash(board: &Board, player: Player) -> u64 {
 }
 
 #[derive(Clone, Debug)]
-struct MoveHistoryEntry {
+struct MoveHistoryEntry<const NW: usize> {
     move_: Move,
-    captured_stones: Bitboard,
+    captured_stones: Bitboard<NW>,
     previous_ko_point: Option<Position>,
 }
 
 pub const DEFAULT_KOMI: f32 = 7.5;
 
 #[derive(Clone, Debug)]
-pub struct Game {
-    board: Board,
-    geo: BoardGeometry,
+pub struct Game<const NW: usize> {
+    board: Board<NW>,
+    geo: BoardGeometry<NW>,
     current_player: Player,
-    move_history: Vec<MoveHistoryEntry>,
+    move_history: Vec<MoveHistoryEntry<NW>>,
     is_over: bool,
     outcome: Option<GameOutcome>,
     consecutive_passes: u8,
@@ -41,7 +41,7 @@ pub struct Game {
     position_hashes: Option<HashSet<u64>>,
 }
 
-impl Game {
+impl<const NW: usize> Game<NW> {
     pub fn new(width: u8, height: u8) -> Self {
         let board_size = width as u16 * height as u16;
         let min_moves_before_pass_ends = board_size / 2;
@@ -89,10 +89,6 @@ impl Game {
         }
     }
 
-    pub fn standard() -> Self {
-        Self::new(STANDARD_COLS, STANDARD_ROWS)
-    }
-
     pub fn komi(&self) -> f32 {
         self.komi
     }
@@ -125,7 +121,7 @@ impl Game {
         self.board.set_piece(pos, player)
     }
 
-    pub fn board(&self) -> &Board {
+    pub fn board(&self) -> &Board<NW> {
         &self.board
     }
 
@@ -154,9 +150,8 @@ impl Game {
     }
 
     /// Simulate placing a stone and performing captures, returning the resulting board.
-    /// Used by superko detection to check if a move would recreate a previous position.
-    fn simulate_placement(&self, idx: usize, player: Player) -> Board {
-        let mut board = self.board; // Board is Copy
+    fn simulate_placement(&self, idx: usize, player: Player) -> Board<NW> {
+        let mut board = self.board;
         board.set_bit(idx, player);
 
         let opponent = player.opposite();
@@ -202,10 +197,8 @@ impl Game {
             let empty_mask = self.geo.board_mask & !occupied;
             let region = self.geo.flood_fill(seed, empty_mask);
 
-            // Remove this region from remaining
             remaining_empty &= !region;
 
-            // Check which players are adjacent to this region
             let region_neighbors = self.geo.neighbors(&region);
             let black_adjacent = (region_neighbors & self.board.black_stones()).is_nonzero();
             let white_adjacent = (region_neighbors & self.board.white_stones()).is_nonzero();
@@ -233,59 +226,49 @@ impl Game {
     }
 
     /// Check if placing a stone at `idx` for `player` would be suicide.
-    /// Zero heap allocations — works entirely on stack-based bitboards.
     fn would_be_suicide(&self, idx: usize, player: Player) -> bool {
-        let nw = self.geo.nw as usize;
         let bit = Bitboard::single(idx);
-        let own = self.board.stones_for(player).or_w(bit, nw);
+        let own = self.board.stones_for(player) | bit;
         let opp = self.board.stones_for(player.opposite());
-        let occupied = own.or_w(opp, nw);
-        let empty = self.geo.board_mask.andnot_w(occupied, nw);
+        let occupied = own | opp;
+        let empty = self.geo.board_mask.andnot(occupied);
 
-        // Fast path: if the new stone itself has any empty neighbor,
-        // the group containing it has at least one liberty → not suicide.
-        // This skips the expensive flood-fill for ~95% of positions.
+        // Fast path: if the new stone itself has any empty neighbor, not suicide.
         let bit_neighbors = self.geo.neighbors(&bit);
-        if bit_neighbors.and_w(empty, nw).is_nonzero_w(nw) {
+        if (bit_neighbors & empty).is_nonzero() {
             return false;
         }
 
-        // Slow path: stone has no empty neighbors. Flood-fill to find full group.
+        // Slow path: flood-fill to find full group.
         let group = self.geo.flood_fill(bit, own);
 
-        // Check if this group has any liberties
         let group_neighbors = self.geo.neighbors(&group);
-        if group_neighbors.and_w(empty, nw).is_nonzero_w(nw) {
-            return false; // has liberties — not suicide
+        if (group_neighbors & empty).is_nonzero() {
+            return false;
         }
 
-        // No liberties, but check if any adjacent opponent group would be captured
-        let adjacent_opponent = group_neighbors.and_w(opp, nw);
-        if adjacent_opponent.is_empty_w(nw) {
-            return true; // no adjacent opponents to capture — it's suicide
+        // No liberties, check if any adjacent opponent group would be captured
+        let adjacent_opponent = group_neighbors & opp;
+        if adjacent_opponent.is_empty() {
+            return true;
         }
 
-        // Check each adjacent opponent group
         let mut remaining_adj_opp = adjacent_opponent;
         while let Some(opp_idx) = remaining_adj_opp.lowest_bit_index() {
             let opp_seed = Bitboard::single(opp_idx);
             let opp_group = self.geo.flood_fill(opp_seed, opp);
 
-            // Remove this entire group from remaining so we don't re-check it
-            remaining_adj_opp = remaining_adj_opp.andnot_w(opp_group, nw);
+            remaining_adj_opp = remaining_adj_opp.andnot(opp_group);
 
-            // This opponent group's liberties (excluding the new stone's position)
             let opp_group_neighbors = self.geo.neighbors(&opp_group);
-            let opp_liberties = opp_group_neighbors.and_w(empty, nw);
+            let opp_liberties = opp_group_neighbors & empty;
 
-            if opp_liberties.is_empty_w(nw) {
-                // This opponent group has no liberties (our new stone took the last one)
-                // → it would be captured → not suicide
+            if opp_liberties.is_empty() {
                 return false;
             }
         }
 
-        true // no opponent group can be captured, own group has no liberties → suicide
+        true
     }
 
     pub fn legal_moves(&self) -> Vec<Move> {
@@ -396,7 +379,6 @@ impl Game {
                 let mut total_captured: u32 = 0;
                 let mut single_capture_idx: Option<usize> = None;
 
-                // Check each adjacent opponent group for capture
                 let mut remaining = adjacent_opponent;
                 while let Some(opp_idx) = remaining.lowest_bit_index() {
                     let opp_seed = Bitboard::single(opp_idx);
@@ -404,14 +386,11 @@ impl Game {
                         .geo
                         .flood_fill(opp_seed, self.board.stones_for(opponent));
 
-                    // Remove this group from remaining
                     remaining &= !opp_group;
 
-                    // Check if this group has any liberties
                     let opp_neighbors = self.geo.neighbors(&opp_group);
                     let opp_empty = self.board.empty_squares(self.geo.board_mask);
                     if (opp_neighbors & opp_empty).is_empty() {
-                        // Captured!
                         let group_size = opp_group.count();
                         if group_size == 1 && total_captured == 0 {
                             single_capture_idx = Some(opp_idx);
@@ -467,7 +446,6 @@ impl Game {
 
     pub fn unmake_move(&mut self) -> bool {
         if let Some(entry) = self.move_history.pop() {
-            // Remove current position hash before restoring state
             if let Some(ref mut hashes) = self.position_hashes {
                 let hash = compute_position_hash(&self.board, self.current_player);
                 hashes.remove(&hash);
@@ -487,7 +465,6 @@ impl Game {
                     let idx = pos.to_index(self.board.width());
                     self.board.clear_bit(idx);
 
-                    // Restore captured stones for the opponent
                     let opponent = self.current_player.opposite();
                     self.board.restore_stones(entry.captured_stones, opponent);
 
@@ -503,13 +480,19 @@ impl Game {
     }
 }
 
-impl Default for Game {
+impl Game<{ nw_for_board(STANDARD_COLS, STANDARD_ROWS) }> {
+    pub fn standard() -> Self {
+        Self::new(STANDARD_COLS, STANDARD_ROWS)
+    }
+}
+
+impl Default for Game<{ nw_for_board(STANDARD_COLS, STANDARD_ROWS) }> {
     fn default() -> Self {
         Self::standard()
     }
 }
 
-impl std::fmt::Display for Game {
+impl<const NW: usize> std::fmt::Display for Game<NW> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -525,7 +508,7 @@ mod tests {
 
     #[test]
     fn test_new_game() {
-        let game = Game::standard();
+        let game = Game::<{ nw_for_board(19, 19) }>::standard();
         assert_eq!(game.turn(), Player::Black);
         assert!(!game.is_over());
         assert!(game.outcome().is_none());
@@ -533,14 +516,14 @@ mod tests {
 
     #[test]
     fn test_legal_moves_initial() {
-        let game = Game::new(9, 9);
+        let game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
         let moves = game.legal_moves();
         assert_eq!(moves.len(), 9 * 9 + 1);
     }
 
     #[test]
     fn test_make_move() {
-        let mut game = Game::new(9, 9);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
         let move_ = Move::place(0, 0);
 
         assert!(game.is_legal_move(&move_));
@@ -550,7 +533,7 @@ mod tests {
 
     #[test]
     fn test_make_invalid_move() {
-        let mut game = Game::new(9, 9);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
         let move_ = Move::place(10, 0);
 
         assert!(!game.is_legal_move(&move_));
@@ -559,7 +542,7 @@ mod tests {
 
     #[test]
     fn test_occupied_position() {
-        let mut game = Game::new(9, 9);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
         let move_ = Move::place(0, 0);
 
         game.make_move(&move_);
@@ -570,7 +553,7 @@ mod tests {
 
     #[test]
     fn test_unmake_move() {
-        let mut game = Game::new(9, 9);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
         let move_ = Move::place(0, 0);
 
         game.make_move(&move_);
@@ -584,8 +567,7 @@ mod tests {
 
     #[test]
     fn test_pass_move() {
-        // Use with_options to set min_moves to 0 so double-pass ends immediately
-        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 0, 1000, false);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 0, 1000, false);
 
         assert!(game.make_move(&Move::pass()));
         assert_eq!(game.turn(), Player::White);
@@ -593,32 +575,26 @@ mod tests {
 
         assert!(game.make_move(&Move::pass()));
         assert!(game.is_over());
-        // Empty board with komi: White wins
         assert_eq!(game.outcome(), Some(GameOutcome::WhiteWin));
     }
 
     #[test]
     fn test_pass_move_requires_min_moves() {
-        // Default 9x9 game has min_moves = 40 (81/2)
-        let mut game = Game::new(9, 9);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
         assert_eq!(game.min_moves_before_pass_ends(), 40u16);
 
-        // Double pass shouldn't end the game yet
         assert!(game.make_move(&Move::pass()));
         assert!(game.make_move(&Move::pass()));
         assert!(!game.is_over());
 
-        // Game should continue with pass still being legal
         assert!(game.make_move(&Move::pass()));
         assert!(!game.is_over());
     }
 
     #[test]
     fn test_pass_ends_game_after_min_moves() {
-        // Create a game with min_moves = 4
-        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 4, 1000, false);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 4, 1000, false);
 
-        // Play 4 moves (2 passes won't end game yet)
         game.make_move(&Move::place(0, 0));
         game.make_move(&Move::place(1, 0));
         game.make_move(&Move::pass());
@@ -628,8 +604,7 @@ mod tests {
 
     #[test]
     fn test_max_moves_ends_game() {
-        // Create a game with max_moves = 5
-        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 100, 5, false);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 100, 5, false);
 
         game.make_move(&Move::place(0, 0));
         game.make_move(&Move::place(1, 0));
@@ -644,17 +619,17 @@ mod tests {
 
     #[test]
     fn test_scoring_black_wins() {
-        let mut game = Game::with_options(5, 5, 0.5, 0, 1000, false);
+        let mut game = Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, 0.5, 0, 1000, false);
 
-        game.make_move(&Move::place(0, 0)); // Black
-        game.make_move(&Move::pass()); // White
-        game.make_move(&Move::place(1, 0)); // Black
-        game.make_move(&Move::pass()); // White
-        game.make_move(&Move::place(0, 1)); // Black
-        game.make_move(&Move::pass()); // White
-        game.make_move(&Move::place(1, 1)); // Black
-        game.make_move(&Move::pass()); // White
-        game.make_move(&Move::pass()); // Black - game ends
+        game.make_move(&Move::place(0, 0));
+        game.make_move(&Move::pass());
+        game.make_move(&Move::place(1, 0));
+        game.make_move(&Move::pass());
+        game.make_move(&Move::place(0, 1));
+        game.make_move(&Move::pass());
+        game.make_move(&Move::place(1, 1));
+        game.make_move(&Move::pass());
+        game.make_move(&Move::pass());
 
         assert!(game.is_over());
         let (black_score, white_score) = game.score();
@@ -664,15 +639,15 @@ mod tests {
 
     #[test]
     fn test_scoring_with_territory() {
-        let mut game = Game::with_options(5, 5, 0.0, 0, 1000, false);
+        let mut game = Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, 0.0, 0, 1000, false);
 
-        game.make_move(&Move::place(0, 2)); // Black
-        game.make_move(&Move::pass()); // White
-        game.make_move(&Move::place(0, 3)); // Black
-        game.make_move(&Move::pass()); // White
-        game.make_move(&Move::place(1, 2)); // Black
-        game.make_move(&Move::pass()); // White
-        game.make_move(&Move::pass()); // Black - game ends
+        game.make_move(&Move::place(0, 2));
+        game.make_move(&Move::pass());
+        game.make_move(&Move::place(0, 3));
+        game.make_move(&Move::pass());
+        game.make_move(&Move::place(1, 2));
+        game.make_move(&Move::pass());
+        game.make_move(&Move::pass());
 
         let (black_score, white_score) = game.score();
         assert!(black_score > white_score);
@@ -681,7 +656,7 @@ mod tests {
 
     #[test]
     fn test_simple_capture() {
-        let mut game = Game::new(5, 5);
+        let mut game = Game::<{ nw_for_board(5, 5) }>::new(5, 5);
 
         game.make_move(&Move::place(1, 0));
         game.make_move(&Move::place(0, 0));
@@ -692,7 +667,7 @@ mod tests {
 
     #[test]
     fn test_capture_group() {
-        let mut game = Game::new(5, 5);
+        let mut game = Game::<{ nw_for_board(5, 5) }>::new(5, 5);
 
         game.make_move(&Move::place(0, 0));
         game.make_move(&Move::place(1, 0));
@@ -717,7 +692,7 @@ mod tests {
 
     #[test]
     fn test_suicide_prevention() {
-        let mut game = Game::new(5, 5);
+        let mut game = Game::<{ nw_for_board(5, 5) }>::new(5, 5);
 
         game.make_move(&Move::place(1, 0));
         game.make_move(&Move::pass());
@@ -732,7 +707,7 @@ mod tests {
 
     #[test]
     fn test_actual_suicide_prevention() {
-        let mut game = Game::with_options(5, 5, DEFAULT_KOMI, 0, 1000, false);
+        let mut game = Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, DEFAULT_KOMI, 0, 1000, false);
 
         game.make_move(&Move::place(1, 0));
         game.make_move(&Move::pass());
@@ -746,19 +721,19 @@ mod tests {
 
     #[test]
     fn test_ko_rule() {
-        let mut game = Game::new(5, 5);
+        let mut game = Game::<{ nw_for_board(5, 5) }>::new(5, 5);
 
-        game.make_move(&Move::place(1, 0)); // B
-        game.make_move(&Move::place(2, 0)); // W
+        game.make_move(&Move::place(1, 0));
+        game.make_move(&Move::place(2, 0));
 
-        game.make_move(&Move::place(0, 1)); // B
-        game.make_move(&Move::place(1, 1)); // W
+        game.make_move(&Move::place(0, 1));
+        game.make_move(&Move::place(1, 1));
 
-        game.make_move(&Move::place(1, 2)); // B
-        game.make_move(&Move::place(2, 2)); // W
+        game.make_move(&Move::place(1, 2));
+        game.make_move(&Move::place(2, 2));
 
-        game.make_move(&Move::pass()); // B pass
-        game.make_move(&Move::place(3, 1)); // W
+        game.make_move(&Move::pass());
+        game.make_move(&Move::place(3, 1));
 
         let ko_capture = Move::place(2, 1);
         assert!(game.is_legal_move(&ko_capture));
@@ -773,7 +748,7 @@ mod tests {
 
     #[test]
     fn test_unmake_restores_captures() {
-        let mut game = Game::new(5, 5);
+        let mut game = Game::<{ nw_for_board(5, 5) }>::new(5, 5);
 
         game.make_move(&Move::place(1, 0));
         game.make_move(&Move::place(0, 0));
@@ -791,7 +766,7 @@ mod tests {
 
     #[test]
     fn test_move_history() {
-        let mut game = Game::new(9, 9);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
 
         assert_eq!(game.move_history().len(), 0);
 
@@ -809,7 +784,7 @@ mod tests {
 
     #[test]
     fn test_legal_moves_when_game_over() {
-        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 0, 1000, false);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 0, 1000, false);
 
         game.make_move(&Move::pass());
         game.make_move(&Move::pass());
@@ -820,31 +795,26 @@ mod tests {
 
     #[test]
     fn test_superko_unmake_restores() {
-        let mut game = Game::new(5, 5);
+        let mut game = Game::<{ nw_for_board(5, 5) }>::new(5, 5);
 
-        game.make_move(&Move::place(1, 0)); // B
-        game.make_move(&Move::place(2, 0)); // W
+        game.make_move(&Move::place(1, 0));
+        game.make_move(&Move::place(2, 0));
 
-        game.make_move(&Move::place(0, 1)); // B
-        game.make_move(&Move::place(1, 1)); // W
+        game.make_move(&Move::place(0, 1));
+        game.make_move(&Move::place(1, 1));
 
-        game.make_move(&Move::place(1, 2)); // B
-        game.make_move(&Move::place(2, 2)); // W
+        game.make_move(&Move::place(1, 2));
+        game.make_move(&Move::place(2, 2));
 
-        game.make_move(&Move::pass()); // B pass
-        game.make_move(&Move::place(3, 1)); // W
+        game.make_move(&Move::pass());
+        game.make_move(&Move::place(3, 1));
 
-        // B captures at (2,1)
         game.make_move(&Move::place(2, 1));
 
-        // W can't recapture at (1,1)
         assert!(!game.is_legal_move(&Move::place(1, 1)));
 
-        // Unmake the capture
         game.unmake_move();
 
-        // Now (2,1) should be legal again for Black
         assert!(game.is_legal_move(&Move::place(2, 1)));
     }
-
 }

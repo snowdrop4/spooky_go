@@ -34,6 +34,7 @@ fn spooky_go(m: &Bound<'_, PyModule>) -> PyResult<()> {
 #[cfg(feature = "python")]
 mod python_bindings {
     use super::*;
+    use crate::bitboard::nw_for_board;
     use crate::board::Board;
     use crate::encode;
     use crate::game::Game;
@@ -42,10 +43,105 @@ mod python_bindings {
     use crate::position::Position;
     use crate::r#move::Move;
 
+    // -----------------------------------------------------------------------
+    // Enum dispatch via paste! for Game<NW> and Board<NW>
+    // -----------------------------------------------------------------------
+
+    macro_rules! define_dispatch {
+        ($($nw:literal),*) => {
+            paste::paste! {
+                #[derive(Clone, Debug)]
+                enum GameInner {
+                    $( [<Nw $nw>](Game<$nw>), )*
+                }
+
+                #[derive(Clone, Debug)]
+                enum BoardInner {
+                    $( [<Nw $nw>](Board<$nw>), )*
+                }
+
+                macro_rules! dispatch_game {
+                    ($self_:expr, $g:ident => $body:expr) => {
+                        match $self_ {
+                            $( GameInner::[<Nw $nw>]($g) => $body, )*
+                        }
+                    };
+                }
+
+                macro_rules! dispatch_game_mut {
+                    ($self_:expr, $g:ident => $body:expr) => {
+                        match $self_ {
+                            $( GameInner::[<Nw $nw>]($g) => $body, )*
+                        }
+                    };
+                }
+
+                macro_rules! dispatch_board {
+                    ($self_:expr, $b:ident => $body:expr) => {
+                        match $self_ {
+                            $( BoardInner::[<Nw $nw>]($b) => $body, )*
+                        }
+                    };
+                }
+
+                macro_rules! dispatch_board_mut {
+                    ($self_:expr, $b:ident => $body:expr) => {
+                        match $self_ {
+                            $( BoardInner::[<Nw $nw>]($b) => $body, )*
+                        }
+                    };
+                }
+
+                fn make_game_inner(width: u8, height: u8) -> GameInner {
+                    let nw = nw_for_board(width, height);
+                    match nw {
+                        $( $nw => GameInner::[<Nw $nw>](Game::new(width, height)), )*
+                        _ => unreachable!("NW out of range: {}", nw),
+                    }
+                }
+
+                fn make_game_inner_with_options(
+                    width: u8, height: u8, komi: f32,
+                    min_moves: u16, max_moves: u16, superko: bool,
+                ) -> GameInner {
+                    let nw = nw_for_board(width, height);
+                    match nw {
+                        $( $nw => GameInner::[<Nw $nw>](Game::with_options(
+                            width, height, komi, min_moves, max_moves, superko
+                        )), )*
+                        _ => unreachable!("NW out of range: {}", nw),
+                    }
+                }
+
+                fn make_board_inner(width: u8, height: u8) -> BoardInner {
+                    let nw = nw_for_board(width, height);
+                    match nw {
+                        $( $nw => BoardInner::[<Nw $nw>](Board::new(width, height)), )*
+                        _ => unreachable!("NW out of range: {}", nw),
+                    }
+                }
+
+                macro_rules! game_to_board_inner {
+                    ($game_inner:expr) => {
+                        match $game_inner {
+                            $( GameInner::[<Nw $nw>](g) => BoardInner::[<Nw $nw>](*g.board()), )*
+                        }
+                    };
+                }
+            }
+        }
+    }
+
+    define_dispatch!(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+
+    // -----------------------------------------------------------------------
+    // PyBoard
+    // -----------------------------------------------------------------------
+
     #[pyclass(name = "Board")]
     #[derive(Clone)]
     pub struct PyBoard {
-        board: Board,
+        inner: BoardInner,
     }
 
     #[pymethods]
@@ -63,56 +159,58 @@ mod python_bindings {
                 ));
             }
             Ok(PyBoard {
-                board: Board::new(width as u8, height as u8),
+                inner: make_board_inner(width as u8, height as u8),
             })
         }
 
         #[staticmethod]
         pub fn standard() -> Self {
             PyBoard {
-                board: Board::standard(),
+                inner: make_board_inner(19, 19),
             }
         }
 
         pub fn width(&self) -> usize {
-            self.board.width() as usize
+            dispatch_board!(&self.inner, b => b.width() as usize)
         }
 
         pub fn height(&self) -> usize {
-            self.board.height() as usize
+            dispatch_board!(&self.inner, b => b.height() as usize)
         }
 
         pub fn get_piece(&self, col: usize, row: usize) -> Option<i8> {
             let pos = Position::new(col as u8, row as u8);
-            self.board.get_piece(&pos).map(|p| p as i8)
+            dispatch_board!(&self.inner, b => b.get_piece(&pos).map(|p| p as i8))
         }
 
         pub fn set_piece(&mut self, col: usize, row: usize, piece: Option<i8>) {
             let pos = Position::new(col as u8, row as u8);
             let player = piece.map(|p| Player::from_int(p).expect("Invalid player value"));
-            self.board.set_piece(&pos, player)
+            dispatch_board_mut!(&mut self.inner, b => b.set_piece(&pos, player))
         }
 
         pub fn clear(&mut self) {
-            self.board.clear()
+            dispatch_board_mut!(&mut self.inner, b => b.clear())
         }
 
         pub fn __str__(&self) -> String {
-            self.board.to_string()
+            dispatch_board!(&self.inner, b => b.to_string())
         }
 
         pub fn __repr__(&self) -> String {
-            format!(
-                "Board(width={}, height={})",
-                self.board.width(),
-                self.board.height()
-            )
+            let w = self.width();
+            let h = self.height();
+            format!("Board(width={}, height={})", w, h)
         }
     }
 
+    // -----------------------------------------------------------------------
+    // PyGame
+    // -----------------------------------------------------------------------
+
     #[pyclass(name = "Game")]
     pub struct PyGame {
-        game: Game,
+        inner: GameInner,
     }
 
     #[pymethods]
@@ -130,7 +228,7 @@ mod python_bindings {
                 ));
             }
             Ok(PyGame {
-                game: Game::new(width as u8, height as u8),
+                inner: make_game_inner(width as u8, height as u8),
             })
         }
 
@@ -155,7 +253,7 @@ mod python_bindings {
                 ));
             }
             Ok(PyGame {
-                game: Game::with_options(
+                inner: make_game_inner_with_options(
                     width as u8,
                     height as u8,
                     komi,
@@ -169,55 +267,55 @@ mod python_bindings {
         #[staticmethod]
         pub fn standard() -> Self {
             PyGame {
-                game: Game::standard(),
+                inner: make_game_inner(19, 19),
             }
         }
 
         pub fn komi(&self) -> f32 {
-            self.game.komi()
+            dispatch_game!(&self.inner, g => g.komi())
         }
 
         pub fn min_moves_before_pass_ends(&self) -> usize {
-            self.game.min_moves_before_pass_ends() as usize
+            dispatch_game!(&self.inner, g => g.min_moves_before_pass_ends() as usize)
         }
 
         pub fn max_moves(&self) -> usize {
-            self.game.max_moves() as usize
+            dispatch_game!(&self.inner, g => g.max_moves() as usize)
         }
 
         pub fn move_count(&self) -> usize {
-            self.game.move_count()
+            dispatch_game!(&self.inner, g => g.move_count())
         }
 
         pub fn score(&self) -> (f32, f32) {
-            self.game.score()
+            dispatch_game!(&self.inner, g => g.score())
         }
 
         pub fn width(&self) -> usize {
-            self.game.board().width() as usize
+            dispatch_game!(&self.inner, g => g.width() as usize)
         }
 
         pub fn height(&self) -> usize {
-            self.game.board().height() as usize
+            dispatch_game!(&self.inner, g => g.height() as usize)
         }
 
         pub fn get_piece(&self, col: usize, row: usize) -> Option<i8> {
             let pos = Position::new(col as u8, row as u8);
-            self.game.get_piece(&pos).map(|p| p as i8)
+            dispatch_game!(&self.inner, g => g.get_piece(&pos).map(|p| p as i8))
         }
 
         pub fn set_piece(&mut self, col: usize, row: usize, piece: Option<i8>) {
             let pos = Position::new(col as u8, row as u8);
             let player = piece.map(|p| Player::from_int(p).expect("Invalid player value"));
-            self.game.set_piece(&pos, player)
+            dispatch_game_mut!(&mut self.inner, g => g.set_piece(&pos, player))
         }
 
         pub fn turn(&self) -> i8 {
-            self.game.turn() as i8
+            dispatch_game!(&self.inner, g => g.turn() as i8)
         }
 
         pub fn is_over(&self) -> bool {
-            self.game.is_over()
+            dispatch_game!(&self.inner, g => g.is_over())
         }
 
         // ---------------------------------------------------------------------
@@ -225,31 +323,34 @@ mod python_bindings {
         // ---------------------------------------------------------------------
 
         pub fn legal_action_indices(&self) -> Vec<usize> {
-            let w = self.game.width();
-            let h = self.game.height();
-            self.game
-                .legal_moves()
-                .into_iter()
-                .map(|m| encode::encode_move(&m, w, h))
-                .collect()
+            dispatch_game!(&self.inner, g => {
+                let w = g.width();
+                let h = g.height();
+                g.legal_moves()
+                    .into_iter()
+                    .map(|m| encode::encode_move(&m, w, h))
+                    .collect()
+            })
         }
 
         pub fn apply_action(&mut self, action: usize) -> bool {
-            let w = self.game.width();
-            let h = self.game.height();
-            if let Some(move_) = encode::decode_move(action, w, h) {
-                self.game.make_move(&move_)
-            } else {
-                false
-            }
+            dispatch_game_mut!(&mut self.inner, g => {
+                let w = g.width();
+                let h = g.height();
+                if let Some(move_) = encode::decode_move(action, w, h) {
+                    g.make_move(&move_)
+                } else {
+                    false
+                }
+            })
         }
 
         pub fn action_size(&self) -> usize {
-            encode::total_actions(self.game.width(), self.game.height())
+            dispatch_game!(&self.inner, g => encode::total_actions(g.width(), g.height()))
         }
 
         pub fn board_shape(&self) -> (usize, usize) {
-            (self.game.height() as usize, self.game.width() as usize)
+            dispatch_game!(&self.inner, g => (g.height() as usize, g.width() as usize))
         }
 
         pub fn input_plane_count(&self) -> usize {
@@ -257,111 +358,118 @@ mod python_bindings {
         }
 
         pub fn reward_absolute(&self) -> f32 {
-            self.game
-                .outcome()
-                .map(|o| o.encode_winner_absolute())
-                .unwrap_or(0.0)
+            dispatch_game!(&self.inner, g => {
+                g.outcome()
+                    .map(|o| o.encode_winner_absolute())
+                    .unwrap_or(0.0)
+            })
         }
 
         pub fn reward_from_perspective(&self, perspective: i8) -> f32 {
-            self.game
-                .outcome()
-                .map(|o| {
-                    o.encode_winner_from_perspective(
-                        Player::from_int(perspective).expect("Invalid perspective"),
-                    )
-                })
-                .unwrap_or(0.0)
+            dispatch_game!(&self.inner, g => {
+                g.outcome()
+                    .map(|o| {
+                        o.encode_winner_from_perspective(
+                            Player::from_int(perspective).expect("Invalid perspective"),
+                        )
+                    })
+                    .unwrap_or(0.0)
+            })
         }
 
         pub fn name(&self) -> String {
-            format!("go_{}x{}", self.game.width(), self.game.height())
+            dispatch_game!(&self.inner, g => format!("go_{}x{}", g.width(), g.height()))
         }
 
         pub fn outcome(&self) -> Option<PyGameOutcome> {
-            self.game.outcome().map(|o| PyGameOutcome { outcome: o })
+            dispatch_game!(&self.inner, g => g.outcome().map(|o| PyGameOutcome { outcome: o }))
         }
 
         pub fn legal_moves(&self) -> Vec<PyMove> {
-            self.game
-                .legal_moves()
-                .into_iter()
-                .map(|m| PyMove { move_: m })
-                .collect()
+            dispatch_game!(&self.inner, g => {
+                g.legal_moves()
+                    .into_iter()
+                    .map(|m| PyMove { move_: m })
+                    .collect()
+            })
         }
 
         pub fn is_legal_move(&self, move_: &PyMove) -> bool {
-            self.game.is_legal_move(&move_.move_)
+            dispatch_game!(&self.inner, g => g.is_legal_move(&move_.move_))
         }
 
         pub fn make_move(&mut self, move_: &PyMove) -> bool {
-            self.game.make_move(&move_.move_)
+            dispatch_game_mut!(&mut self.inner, g => g.make_move(&move_.move_))
         }
 
         pub fn unmake_move(&mut self) -> bool {
-            self.game.unmake_move()
+            dispatch_game_mut!(&mut self.inner, g => g.unmake_move())
         }
 
         pub fn board(&self) -> PyBoard {
             PyBoard {
-                board: self.game.board().clone(),
+                inner: game_to_board_inner!(&self.inner),
             }
         }
 
         pub fn superko(&self) -> bool {
-            self.game.superko()
+            dispatch_game!(&self.inner, g => g.superko())
         }
 
         pub fn ko_point(&self) -> Option<(usize, usize)> {
-            self.game
-                .ko_point()
-                .map(|p| (p.col as usize, p.row as usize))
+            dispatch_game!(&self.inner, g => {
+                g.ko_point().map(|p| (p.col as usize, p.row as usize))
+            })
         }
 
         pub fn clone(&self) -> PyGame {
             PyGame {
-                game: self.game.clone(),
+                inner: self.inner.clone(),
             }
         }
 
         pub fn __hash__(&self) -> u64 {
             use std::hash::{Hash, Hasher};
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-
-            self.game.board().hash(&mut hasher);
-            (self.game.turn() as i8).hash(&mut hasher);
-            self.game.ko_point().hash(&mut hasher);
-
-            hasher.finish()
+            dispatch_game!(&self.inner, g => {
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                g.board().hash(&mut hasher);
+                (g.turn() as i8).hash(&mut hasher);
+                g.ko_point().hash(&mut hasher);
+                hasher.finish()
+            })
         }
 
         pub fn encode_game_planes(&self) -> (Vec<f32>, usize, usize, usize) {
-            encode::encode_game_planes(&self.game)
+            dispatch_game!(&self.inner, g => encode::encode_game_planes(g))
         }
 
         pub fn decode_action(&self, action: usize) -> Option<PyMove> {
-            let w = self.game.width();
-            let h = self.game.height();
-            encode::decode_move(action, w, h).map(|move_| PyMove { move_ })
+            dispatch_game!(&self.inner, g => {
+                let w = g.width();
+                let h = g.height();
+                encode::decode_move(action, w, h).map(|move_| PyMove { move_ })
+            })
         }
 
         pub fn total_actions(&self) -> usize {
-            encode::total_actions(self.game.width(), self.game.height())
+            dispatch_game!(&self.inner, g => encode::total_actions(g.width(), g.height()))
         }
 
         pub fn __str__(&self) -> String {
-            self.game.to_string()
+            dispatch_game!(&self.inner, g => g.to_string())
         }
 
         pub fn __repr__(&self) -> String {
-            format!(
-                "Game(width={}, height={}, turn={:?}, over={}, superko={})",
-                self.game.board().width(),
-                self.game.board().height(),
-                self.game.turn(),
-                self.game.is_over(),
-                self.game.superko()
-            )
+            dispatch_game!(&self.inner, g => {
+                format!(
+                    "Game(width={}, height={}, turn={:?}, over={}, superko={})",
+                    g.width(),
+                    g.height(),
+                    g.turn(),
+                    g.is_over(),
+                    g.superko()
+                )
+            })
         }
     }
 

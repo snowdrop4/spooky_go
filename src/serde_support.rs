@@ -1,8 +1,10 @@
+use crate::bitboard::nw_for_board;
+use crate::board::{STANDARD_COLS, STANDARD_ROWS};
 use crate::game::Game;
 use crate::r#move::Move;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-impl Serialize for Game {
+impl<const NW: usize> Serialize for Game<NW> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -17,18 +19,47 @@ impl Serialize for Game {
             .collect();
         let moves_str = moves.join(";");
 
-        serializer.serialize_str(&moves_str)
+        // Include board dimensions: "WxH:moves"
+        let full = format!("{}x{}:{}", self.width(), self.height(), moves_str);
+        serializer.serialize_str(&full)
     }
 }
 
-impl<'de> Deserialize<'de> for Game {
+impl<'de> Deserialize<'de> for Game<{ nw_for_board(STANDARD_COLS, STANDARD_ROWS) }> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let moves_str = String::deserialize(deserializer)?;
+        let s = String::deserialize(deserializer)?;
 
-        let mut game = Game::standard();
+        // Support both "WxH:moves" format and legacy "moves" format
+        let (width, height, moves_str) = if let Some((dims, rest)) = s.split_once(':') {
+            let (w, h) = dims
+                .split_once('x')
+                .ok_or_else(|| serde::de::Error::custom("Invalid dimensions format"))?;
+            let width: u8 = w
+                .parse()
+                .map_err(|e| serde::de::Error::custom(format!("Invalid width: {}", e)))?;
+            let height: u8 = h
+                .parse()
+                .map_err(|e| serde::de::Error::custom(format!("Invalid height: {}", e)))?;
+
+            let expected_nw = nw_for_board(width, height);
+            let actual_nw = nw_for_board(STANDARD_COLS, STANDARD_ROWS);
+            if expected_nw != actual_nw {
+                return Err(serde::de::Error::custom(format!(
+                    "Board {}x{} requires NW={}, but deserializing into Game with NW={}",
+                    width, height, expected_nw, actual_nw
+                )));
+            }
+
+            (width, height, rest)
+        } else {
+            // Legacy format: assume standard board
+            (STANDARD_COLS, STANDARD_ROWS, s.as_str())
+        };
+
+        let mut game = Game::new(width, height);
 
         if moves_str.is_empty() {
             return Ok(game);
@@ -117,45 +148,44 @@ impl<'de> Deserialize<'de> for Move {
 mod tests {
     use super::*;
 
+    type StandardGame = Game<{ nw_for_board(STANDARD_COLS, STANDARD_ROWS) }>;
+
     #[test]
     fn test_game_serde_empty() {
-        let game = Game::standard();
+        let game = StandardGame::standard();
 
         let json = serde_json::to_string(&game).unwrap();
-        assert_eq!(json, r#""""#);
+        assert_eq!(json, r#""19x19:""#);
 
-        let game2: Game = serde_json::from_str(&json).unwrap();
+        let game2: StandardGame = serde_json::from_str(&json).unwrap();
         assert_eq!(game2.move_history().len(), 0);
         assert!(!game2.is_over());
     }
 
     #[test]
     fn test_game_serde_with_moves() {
-        let mut game = Game::new(9, 9);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
 
         game.make_move(&Move::place(3, 3));
         game.make_move(&Move::place(4, 4));
         game.make_move(&Move::place(5, 5));
 
         let json = serde_json::to_string(&game).unwrap();
-        assert_eq!(json, r#""3,3;4,4;5,5""#);
-
-        let game2: Game = serde_json::from_str(&json).unwrap();
-        assert_eq!(game2.move_history().len(), 3);
+        assert_eq!(json, r#""9x9:3,3;4,4;5,5""#);
     }
 
     #[test]
     fn test_game_serde_with_pass() {
-        let mut game = Game::new(9, 9);
+        let mut game = StandardGame::new(19, 19);
 
         game.make_move(&Move::place(0, 0));
         game.make_move(&Move::pass());
         game.make_move(&Move::place(1, 1));
 
         let json = serde_json::to_string(&game).unwrap();
-        assert_eq!(json, r#""0,0;pass;1,1""#);
+        assert_eq!(json, r#""19x19:0,0;pass;1,1""#);
 
-        let game2: Game = serde_json::from_str(&json).unwrap();
+        let game2: StandardGame = serde_json::from_str(&json).unwrap();
         assert_eq!(game2.move_history().len(), 3);
         assert!(game2.move_history()[1].is_pass());
     }
@@ -184,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_game_roundtrip() {
-        let mut game = Game::new(9, 9);
+        let mut game = StandardGame::new(19, 19);
 
         game.make_move(&Move::place(4, 4));
         game.make_move(&Move::place(3, 3));
@@ -194,7 +224,7 @@ mod tests {
 
         let json = serde_json::to_string(&game).unwrap();
 
-        let game2: Game = serde_json::from_str(&json).unwrap();
+        let game2: StandardGame = serde_json::from_str(&json).unwrap();
 
         assert_eq!(game.move_history().len(), game2.move_history().len());
         for (m1, m2) in game.move_history().iter().zip(game2.move_history().iter()) {
@@ -204,13 +234,13 @@ mod tests {
 
     #[test]
     fn test_bincode_game() {
-        let mut game = Game::new(9, 9);
+        let mut game = StandardGame::new(19, 19);
         game.make_move(&Move::place(3, 3));
         game.make_move(&Move::place(4, 4));
 
         let encoded = bincode::serialize(&game).unwrap();
 
-        let game2: Game = bincode::deserialize(&encoded).unwrap();
+        let game2: StandardGame = bincode::deserialize(&encoded).unwrap();
 
         assert_eq!(game.move_history().len(), game2.move_history().len());
     }
@@ -235,5 +265,15 @@ mod tests {
         let move2: Move = bincode::deserialize(&encoded).unwrap();
 
         assert!(move2.is_pass());
+    }
+
+    #[test]
+    fn test_legacy_format_deserialize() {
+        // Legacy format without dimensions should deserialize as 19x19
+        let json = r#""0,0;pass;1,1""#;
+        let game: StandardGame = serde_json::from_str(json).unwrap();
+        assert_eq!(game.move_history().len(), 3);
+        assert_eq!(game.width(), 19);
+        assert_eq!(game.height(), 19);
     }
 }

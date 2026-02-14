@@ -1,7 +1,7 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-use crate::bitboard::Bitboard;
+use crate::bitboard::{nw_for_board, Bitboard};
 use crate::player::Player;
 use crate::position::Position;
 
@@ -9,14 +9,14 @@ pub const STANDARD_COLS: u8 = 19;
 pub const STANDARD_ROWS: u8 = 19;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Board {
-    black: Bitboard,
-    white: Bitboard,
+pub struct Board<const NW: usize> {
+    black: Bitboard<NW>,
+    white: Bitboard<NW>,
     width: u8,
     height: u8,
 }
 
-impl Hash for Board {
+impl<const NW: usize> Hash for Board<NW> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.black.hash(state);
         self.white.hash(state);
@@ -25,7 +25,7 @@ impl Hash for Board {
     }
 }
 
-impl Board {
+impl<const NW: usize> Board<NW> {
     pub fn new(width: u8, height: u8) -> Self {
         Board {
             black: Bitboard::empty(),
@@ -33,10 +33,6 @@ impl Board {
             width,
             height,
         }
-    }
-
-    pub fn standard() -> Self {
-        Self::new(STANDARD_COLS, STANDARD_ROWS)
     }
 
     pub fn width(&self) -> u8 {
@@ -81,35 +77,35 @@ impl Board {
     }
 
     #[inline]
-    pub(crate) fn black_stones(&self) -> Bitboard {
+    pub(crate) fn black_stones(&self) -> Bitboard<NW> {
         self.black
     }
 
     #[inline]
-    pub(crate) fn white_stones(&self) -> Bitboard {
+    pub(crate) fn white_stones(&self) -> Bitboard<NW> {
         self.white
     }
 
     #[inline]
-    pub(crate) fn occupied(&self) -> Bitboard {
+    pub(crate) fn occupied(&self) -> Bitboard<NW> {
         self.black | self.white
     }
 
     #[inline]
-    pub(crate) fn empty_squares(&self, board_mask: Bitboard) -> Bitboard {
+    pub(crate) fn empty_squares(&self, board_mask: Bitboard<NW>) -> Bitboard<NW> {
         board_mask & !(self.black | self.white)
     }
 
     /// Remove all stones indicated by `bb` from the board.
     #[inline]
-    pub(crate) fn remove_stones(&mut self, bb: Bitboard) {
+    pub(crate) fn remove_stones(&mut self, bb: Bitboard<NW>) {
         self.black &= !bb;
         self.white &= !bb;
     }
 
     /// Restore stones from a captured bitboard for the given player.
     #[inline]
-    pub(crate) fn restore_stones(&mut self, bb: Bitboard, player: Player) {
+    pub(crate) fn restore_stones(&mut self, bb: Bitboard<NW>, player: Player) {
         match player {
             Player::Black => self.black |= bb,
             Player::White => self.white |= bb,
@@ -118,7 +114,7 @@ impl Board {
 
     /// Get stones bitboard for a specific player.
     #[inline]
-    pub(crate) fn stones_for(&self, player: Player) -> Bitboard {
+    pub(crate) fn stones_for(&self, player: Player) -> Bitboard<NW> {
         match player {
             Player::Black => self.black,
             Player::White => self.white,
@@ -142,13 +138,34 @@ impl Board {
     }
 }
 
-impl Default for Board {
+impl Default for Board<{ nw_for_board(STANDARD_COLS, STANDARD_ROWS) }> {
     fn default() -> Self {
-        Self::standard()
+        Self::new(STANDARD_COLS, STANDARD_ROWS)
     }
 }
 
-impl fmt::Display for Board {
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_board_sizes() {
+        let size_9x9 = std::mem::size_of::<Board<{ nw_for_board(9, 9) }>>();
+        let size_19x19 = std::mem::size_of::<Board<{ nw_for_board(19, 19) }>>();
+        let size_32x32 = std::mem::size_of::<Board<{ nw_for_board(32, 32) }>>();
+
+        // 9x9 should be much smaller than 32x32
+        assert!(size_9x9 < size_19x19);
+        assert!(size_19x19 < size_32x32);
+
+        // 9x9 (NW=2): ~40 bytes (2*16 + padding) vs old 258
+        assert!(size_9x9 <= 40, "9x9 Board too large: {}", size_9x9);
+        // 19x19 (NW=6): ~104 bytes vs old 258
+        assert!(size_19x19 <= 104, "19x19 Board too large: {}", size_19x19);
+    }
+}
+
+impl<const NW: usize> fmt::Display for Board<NW> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for row in (0..self.height as usize).rev() {
             write!(f, "|")?;

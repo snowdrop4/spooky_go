@@ -102,7 +102,7 @@ class TestOutcomeProperties:
 
     def test_score_method(self) -> None:
         # Test that the score method works
-        game = Game.with_komi(5, 5, komi=7.5)
+        game = Game.with_options(width=5, height=5, komi=7.5, min_moves_before_pass_ends=0, max_moves=1000, superko=True)
         black_score, white_score = game.score()
         assert black_score == 0.0  # Empty board, no Black stones/territory
         assert white_score == 7.5  # Just komi

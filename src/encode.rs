@@ -16,7 +16,7 @@ pub const TOTAL_INPUT_PLANES: usize = (HISTORY_LENGTH * PIECE_PLANES) + CONSTANT
 
 /// Encode the full game state into a flat f32 array for efficient transfer to Python/numpy
 /// Returns (flat_data, num_planes, height, width), where flat_data is in row-major order
-pub fn encode_game_planes(game: &Game) -> (Vec<f32>, usize, usize, usize) {
+pub fn encode_game_planes<const NW: usize>(game: &Game<NW>) -> (Vec<f32>, usize, usize, usize) {
     let perspective = game.turn();
     let width = game.width() as usize;
     let height = game.height() as usize;
@@ -92,6 +92,7 @@ pub fn total_actions(board_width: u8, board_height: u8) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bitboard::nw_for_board;
 
     fn get_plane_value(
         data: &[f32],
@@ -106,7 +107,7 @@ mod tests {
 
     #[test]
     fn test_encode_game_empty() {
-        let game = Game::new(9, 9);
+        let game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
         let (data, num_planes, height, width) = encode_game_planes(&game);
 
         assert_eq!(num_planes, TOTAL_INPUT_PLANES);
@@ -126,7 +127,7 @@ mod tests {
 
     #[test]
     fn test_encode_game() {
-        let game = Game::new(9, 9);
+        let game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
         let (data, num_planes, height, width) = encode_game_planes(&game);
 
         assert_eq!(num_planes, TOTAL_INPUT_PLANES);
@@ -167,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_encode_game_with_pieces() {
-        let mut game = Game::new(9, 9);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
 
         let move1 = Move::place(0, 0);
         game.make_move(&move1);
@@ -213,7 +214,7 @@ mod tests {
                 let mut thread_moves_tested = 0u64;
 
                 for _game_num in 0..games_per_thread {
-                    let mut game = Game::new(9, 9);
+                    let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
                     let max_moves = 100;
 
                     for _move_num in 0..max_moves {
@@ -285,7 +286,7 @@ mod tests {
         use rand::prelude::IndexedRandom;
         use rand::SeedableRng;
 
-        let mut game = Game::new(9, 9);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
         let mut rng = rand::rngs::StdRng::seed_from_u64(123);
 
         for _ in 0..20 {
@@ -309,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_encoding_after_undo() {
-        let mut game = Game::new(9, 9);
+        let mut game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
 
         let initial_encoding = encode_game_planes(&game);
 
@@ -331,7 +332,7 @@ mod tests {
 
     #[test]
     fn test_plane_sizes() {
-        let game = Game::new(9, 9);
+        let game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
         let (data, num_planes, height, width) = encode_game_planes(&game);
 
         assert_eq!(num_planes, TOTAL_INPUT_PLANES);
@@ -342,8 +343,8 @@ mod tests {
 
     #[test]
     fn test_encoding_different_positions() {
-        let mut game1 = Game::new(9, 9);
-        let mut game2 = Game::new(9, 9);
+        let mut game1 = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
+        let mut game2 = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
 
         game1.make_move(&Move::place(0, 0));
         game2.make_move(&Move::place(1, 0));
@@ -370,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_encode_arbitrary_board_size_19x19() {
-        let game = Game::new(19, 19);
+        let game = Game::<{ nw_for_board(19, 19) }>::new(19, 19);
 
         assert_eq!(game.width(), 19u8);
         assert_eq!(game.height(), 19u8);
@@ -395,7 +396,7 @@ mod tests {
 
     #[test]
     fn test_encode_arbitrary_board_size_5x5() {
-        let game = Game::new(5, 5);
+        let game = Game::<{ nw_for_board(5, 5) }>::new(5, 5);
 
         assert_eq!(game.width(), 5u8);
         assert_eq!(game.height(), 5u8);
@@ -409,8 +410,8 @@ mod tests {
 
     #[test]
     fn test_encode_different_board_sizes_different_encodings() {
-        let game1 = Game::new(9, 9);
-        let game2 = Game::new(19, 19);
+        let game1 = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
+        let game2 = Game::<{ nw_for_board(19, 19) }>::new(19, 19);
 
         let (data1, num_planes1, height1, width1) = encode_game_planes(&game1);
         let (data2, num_planes2, height2, width2) = encode_game_planes(&game2);
