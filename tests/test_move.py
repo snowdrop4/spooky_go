@@ -95,7 +95,7 @@ class TestMoveEncoding:
         assert move.is_pass()
 
     def test_decode_invalid_action(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="invalid action"):
             Move.decode(100, 9, 9)
 
     def test_encode_decode_roundtrip_place(self) -> None:

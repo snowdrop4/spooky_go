@@ -20,15 +20,15 @@ class TestBoardCreation:
         assert board.height() == 7
 
     def test_board_too_small(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="width"):
             Board(1, 9)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="height"):
             Board(9, 1)
 
     def test_board_too_large(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="width"):
             Board(33, 9)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="height"):
             Board(9, 33)
 
 

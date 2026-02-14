@@ -64,7 +64,7 @@ class TestGameEncoding:
         game = Game(9, 9)
 
         # Black's turn
-        data, num_planes, height, width = game.encode_game_planes()
+        data, _num_planes, height, width = game.encode_game_planes()
         assert get_plane_value(data, 16, 0, 0, height, width) == 1.0
 
         # After Black moves, White's turn
