@@ -48,11 +48,11 @@ impl<'de> Deserialize<'de> for Game {
                     )));
                 }
 
-                let col: usize = parts[0]
+                let col: u8 = parts[0]
                     .trim()
                     .parse()
                     .map_err(|e| serde::de::Error::custom(format!("Invalid column: {}", e)))?;
-                let row: usize = parts[1]
+                let row: u8 = parts[1]
                     .trim()
                     .parse()
                     .map_err(|e| serde::de::Error::custom(format!("Invalid row: {}", e)))?;
@@ -100,11 +100,11 @@ impl<'de> Deserialize<'de> for Move {
             )));
         }
 
-        let col: usize = parts[0]
+        let col: u8 = parts[0]
             .trim()
             .parse()
             .map_err(|e| serde::de::Error::custom(format!("Invalid column: {}", e)))?;
-        let row: usize = parts[1]
+        let row: u8 = parts[1]
             .trim()
             .parse()
             .map_err(|e| serde::de::Error::custom(format!("Invalid row: {}", e)))?;

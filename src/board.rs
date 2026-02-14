@@ -5,15 +5,15 @@ use crate::bitboard::Bitboard;
 use crate::player::Player;
 use crate::position::Position;
 
-pub const STANDARD_COLS: usize = 19;
-pub const STANDARD_ROWS: usize = 19;
+pub const STANDARD_COLS: u8 = 19;
+pub const STANDARD_ROWS: u8 = 19;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Board {
     black: Bitboard,
     white: Bitboard,
-    width: usize,
-    height: usize,
+    width: u8,
+    height: u8,
 }
 
 impl Hash for Board {
@@ -26,7 +26,7 @@ impl Hash for Board {
 }
 
 impl Board {
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(width: u8, height: u8) -> Self {
         Board {
             black: Bitboard::empty(),
             white: Bitboard::empty(),
@@ -39,11 +39,11 @@ impl Board {
         Self::new(STANDARD_COLS, STANDARD_ROWS)
     }
 
-    pub fn width(&self) -> usize {
+    pub fn width(&self) -> u8 {
         self.width
     }
 
-    pub fn height(&self) -> usize {
+    pub fn height(&self) -> u8 {
         self.height
     }
 
@@ -150,11 +150,11 @@ impl Default for Board {
 
 impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for row in (0..self.height).rev() {
+        for row in (0..self.height as usize).rev() {
             write!(f, "|")?;
 
-            for col in 0..self.width {
-                let pos = Position::new(col, row);
+            for col in 0..self.width as usize {
+                let pos = Position::new(col as u8, row as u8);
                 let c = if let Some(player) = self.get_piece(&pos) {
                     player.to_char()
                 } else {
@@ -170,7 +170,7 @@ impl fmt::Display for Board {
 
         // Column numbers
         write!(f, " ")?;
-        for col in 0..self.width {
+        for col in 0..self.width as usize {
             write!(f, "{} ", col)?;
         }
         writeln!(f)?;

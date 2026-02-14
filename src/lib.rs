@@ -63,7 +63,7 @@ mod python_bindings {
                 ));
             }
             Ok(PyBoard {
-                board: Board::new(width, height),
+                board: Board::new(width as u8, height as u8),
             })
         }
 
@@ -75,20 +75,20 @@ mod python_bindings {
         }
 
         pub fn width(&self) -> usize {
-            self.board.width()
+            self.board.width() as usize
         }
 
         pub fn height(&self) -> usize {
-            self.board.height()
+            self.board.height() as usize
         }
 
         pub fn get_piece(&self, col: usize, row: usize) -> Option<i8> {
-            let pos = Position::new(col, row);
+            let pos = Position::new(col as u8, row as u8);
             self.board.get_piece(&pos).map(|p| p as i8)
         }
 
         pub fn set_piece(&mut self, col: usize, row: usize, piece: Option<i8>) {
-            let pos = Position::new(col, row);
+            let pos = Position::new(col as u8, row as u8);
             let player = piece.map(|p| Player::from_int(p).expect("Invalid player value"));
             self.board.set_piece(&pos, player)
         }
@@ -130,7 +130,7 @@ mod python_bindings {
                 ));
             }
             Ok(PyGame {
-                game: Game::new(width, height),
+                game: Game::new(width as u8, height as u8),
             })
         }
 
@@ -147,7 +147,7 @@ mod python_bindings {
                 ));
             }
             Ok(PyGame {
-                game: Game::with_komi(width, height, komi),
+                game: Game::with_komi(width as u8, height as u8, komi),
             })
         }
 
@@ -171,11 +171,11 @@ mod python_bindings {
             }
             Ok(PyGame {
                 game: Game::with_options(
-                    width,
-                    height,
+                    width as u8,
+                    height as u8,
                     komi,
-                    min_moves_before_pass_ends,
-                    max_moves,
+                    min_moves_before_pass_ends as u16,
+                    max_moves as u16,
                 ),
             })
         }
@@ -192,11 +192,11 @@ mod python_bindings {
         }
 
         pub fn min_moves_before_pass_ends(&self) -> usize {
-            self.game.min_moves_before_pass_ends()
+            self.game.min_moves_before_pass_ends() as usize
         }
 
         pub fn max_moves(&self) -> usize {
-            self.game.max_moves()
+            self.game.max_moves() as usize
         }
 
         pub fn move_count(&self) -> usize {
@@ -208,20 +208,20 @@ mod python_bindings {
         }
 
         pub fn width(&self) -> usize {
-            self.game.board().width()
+            self.game.board().width() as usize
         }
 
         pub fn height(&self) -> usize {
-            self.game.board().height()
+            self.game.board().height() as usize
         }
 
         pub fn get_piece(&self, col: usize, row: usize) -> Option<i8> {
-            let pos = Position::new(col, row);
+            let pos = Position::new(col as u8, row as u8);
             self.game.get_piece(&pos).map(|p| p as i8)
         }
 
         pub fn set_piece(&mut self, col: usize, row: usize, piece: Option<i8>) {
-            let pos = Position::new(col, row);
+            let pos = Position::new(col as u8, row as u8);
             let player = piece.map(|p| Player::from_int(p).expect("Invalid player value"));
             self.game.set_piece(&pos, player)
         }
@@ -239,19 +239,19 @@ mod python_bindings {
         // ---------------------------------------------------------------------
 
         pub fn legal_action_indices(&self) -> Vec<usize> {
-            let width = self.game.width();
-            let height = self.game.height();
+            let w = self.game.width();
+            let h = self.game.height();
             self.game
                 .legal_moves()
                 .into_iter()
-                .map(|m| encode::encode_move(&m, width, height))
+                .map(|m| encode::encode_move(&m, w, h))
                 .collect()
         }
 
         pub fn apply_action(&mut self, action: usize) -> bool {
-            let width = self.game.width();
-            let height = self.game.height();
-            if let Some(move_) = encode::decode_move(action, width, height) {
+            let w = self.game.width();
+            let h = self.game.height();
+            if let Some(move_) = encode::decode_move(action, w, h) {
                 self.game.make_move(&move_)
             } else {
                 false
@@ -263,7 +263,7 @@ mod python_bindings {
         }
 
         pub fn board_shape(&self) -> (usize, usize) {
-            (self.game.height(), self.game.width())
+            (self.game.height() as usize, self.game.width() as usize)
         }
 
         pub fn input_plane_count(&self) -> usize {
@@ -323,7 +323,9 @@ mod python_bindings {
         }
 
         pub fn ko_point(&self) -> Option<(usize, usize)> {
-            self.game.ko_point().map(|p| (p.col, p.row))
+            self.game
+                .ko_point()
+                .map(|p| (p.col as usize, p.row as usize))
         }
 
         pub fn clone(&self) -> PyGame {
@@ -348,9 +350,9 @@ mod python_bindings {
         }
 
         pub fn decode_action(&self, action: usize) -> Option<PyMove> {
-            let width = self.game.width();
-            let height = self.game.height();
-            encode::decode_move(action, width, height).map(|move_| PyMove { move_ })
+            let w = self.game.width();
+            let h = self.game.height();
+            encode::decode_move(action, w, h).map(|move_| PyMove { move_ })
         }
 
         pub fn total_actions(&self) -> usize {
@@ -383,7 +385,7 @@ mod python_bindings {
         #[staticmethod]
         pub fn place(col: usize, row: usize) -> Self {
             PyMove {
-                move_: Move::place(col, row),
+                move_: Move::place(col as u8, row as u8),
             }
         }
 
@@ -399,20 +401,20 @@ mod python_bindings {
         }
 
         pub fn col(&self) -> Option<usize> {
-            self.move_.col()
+            self.move_.col().map(|c| c as usize)
         }
 
         pub fn row(&self) -> Option<usize> {
-            self.move_.row()
+            self.move_.row().map(|r| r as usize)
         }
 
         pub fn encode(&self, board_width: usize, board_height: usize) -> usize {
-            encode::encode_move(&self.move_, board_width, board_height)
+            encode::encode_move(&self.move_, board_width as u8, board_height as u8)
         }
 
         #[staticmethod]
         pub fn decode(action: usize, board_width: usize, board_height: usize) -> PyResult<Self> {
-            match encode::decode_move(action, board_width, board_height) {
+            match encode::decode_move(action, board_width as u8, board_height as u8) {
                 Some(mv) => Ok(PyMove { move_: mv }),
                 _ => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                     "invalid action",

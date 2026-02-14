@@ -2,12 +2,12 @@ use crate::position::Position;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Move {
-    Place { col: usize, row: usize },
+    Place { col: u8, row: u8 },
     Pass,
 }
 
 impl Move {
-    pub fn place(col: usize, row: usize) -> Self {
+    pub fn place(col: u8, row: u8) -> Self {
         Move::Place { col, row }
     }
 
@@ -26,14 +26,14 @@ impl Move {
         }
     }
 
-    pub fn col(&self) -> Option<usize> {
+    pub fn col(&self) -> Option<u8> {
         match self {
             Move::Place { col, .. } => Some(*col),
             Move::Pass => None,
         }
     }
 
-    pub fn row(&self) -> Option<usize> {
+    pub fn row(&self) -> Option<u8> {
         match self {
             Move::Place { row, .. } => Some(*row),
             Move::Pass => None,

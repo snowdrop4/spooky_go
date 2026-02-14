@@ -8,7 +8,7 @@ use std::hint::black_box;
 
 /// Play ~20 random moves on a fresh game to create a realistic mid-game position.
 /// Uses a fixed seed for reproducibility across benchmark runs.
-fn setup_midgame(width: usize, height: usize) -> Game {
+fn setup_midgame(width: u8, height: u8) -> Game {
     let mut game = Game::new(width, height);
     let mut rng = StdRng::seed_from_u64(42);
     for _ in 0..20 {

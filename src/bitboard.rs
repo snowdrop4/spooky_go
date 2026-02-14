@@ -143,7 +143,7 @@ impl Bitboard {
         BitIterator {
             words: self.words,
             word_index: 0,
-            word_limit: 16,
+            word_limit: 16u8,
         }
     }
 
@@ -254,7 +254,7 @@ impl Bitboard {
 
     /// Iterate over set-bit indices, only scanning `nw` words.
     #[inline]
-    pub(crate) fn iter_ones_w(&self, nw: usize) -> BitIterator {
+    pub(crate) fn iter_ones_w(&self, nw: u8) -> BitIterator {
         BitIterator {
             words: self.words,
             word_index: 0,
@@ -320,8 +320,8 @@ impl Not for Bitboard {
 /// Iterator over set-bit indices in a `Bitboard`.
 pub struct BitIterator {
     words: [u64; 16],
-    word_index: usize,
-    word_limit: usize,
+    word_index: u8,
+    word_limit: u8,
 }
 
 impl Iterator for BitIterator {
@@ -329,12 +329,13 @@ impl Iterator for BitIterator {
     #[inline]
     fn next(&mut self) -> Option<usize> {
         while self.word_index < self.word_limit {
-            let w = self.words[self.word_index];
+            let wi = self.word_index as usize;
+            let w = self.words[wi];
             if w != 0 {
                 let bit = w.trailing_zeros() as usize;
                 // Clear lowest set bit
-                self.words[self.word_index] = w & (w - 1);
-                return Some(self.word_index * 64 + bit);
+                self.words[wi] = w & (w - 1);
+                return Some(wi * 64 + bit);
             }
             self.word_index += 1;
         }
@@ -345,11 +346,11 @@ impl Iterator for BitIterator {
 /// Precomputed masks for a given board geometry. Created once per Game.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BoardGeometry {
-    pub width: usize,
-    pub height: usize,
-    pub area: usize,
+    pub width: u8,
+    pub height: u8,
+    pub area: u16,
     /// Number of active u64 words: `ceil(area / 64)`.
-    pub nw: usize,
+    pub nw: u8,
     /// Mask with 1s at all valid board positions (indices 0..area).
     pub board_mask: Bitboard,
     /// board_mask minus column 0 (used to prevent left-wrap in right-shift neighbor).
@@ -360,25 +361,27 @@ pub struct BoardGeometry {
 
 impl BoardGeometry {
     /// Build geometry for a `width × height` board.
-    pub fn new(width: usize, height: usize) -> Self {
-        debug_assert!(width >= 2 && width <= 32);
-        debug_assert!(height >= 2 && height <= 32);
-        let area = width * height;
-        let nw = (area + 63) / 64;
+    pub fn new(width: u8, height: u8) -> Self {
+        debug_assert!((2..=32).contains(&width));
+        debug_assert!((2..=32).contains(&height));
+        let area = width as u16 * height as u16;
+        let nw = area.div_ceil(64) as u8;
+        let w = width as usize;
+        let h = height as usize;
 
         let mut board_mask = Bitboard::empty();
-        for i in 0..area {
+        for i in 0..area as usize {
             board_mask.set(i);
         }
 
         let mut not_col0 = board_mask;
-        for row in 0..height {
-            not_col0.clear(row * width); // column 0
+        for row in 0..h {
+            not_col0.clear(row * w); // column 0
         }
 
         let mut not_col_last = board_mask;
-        for row in 0..height {
-            not_col_last.clear(row * width + width - 1); // last column
+        for row in 0..h {
+            not_col_last.clear(row * w + w - 1); // last column
         }
 
         BoardGeometry {
@@ -395,7 +398,8 @@ impl BoardGeometry {
     /// Compute the set of all orthogonal neighbors of every bit in `bb`.
     #[inline]
     pub fn neighbors(&self, bb: &Bitboard) -> Bitboard {
-        let nw = self.nw;
+        let nw = self.nw as usize;
+        let w = self.width as usize;
         // shift_left can spill into one additional word
         let nw1 = (nw + 1).min(16);
 
@@ -404,9 +408,9 @@ impl BoardGeometry {
         // left: col-1 = shift right by 1, mask off last-column wraps
         let left = bb.shift_right_w(1, nw).and_w(self.not_col_last, nw);
         // down: row+1 = shift left by width
-        let down = bb.shift_left_w(self.width, nw1);
+        let down = bb.shift_left_w(w, nw1);
         // up: row-1 = shift right by width
-        let up = bb.shift_right_w(self.width, nw);
+        let up = bb.shift_right_w(w, nw);
 
         // Combine all four directions, then mask to valid positions
         right
@@ -420,7 +424,7 @@ impl BoardGeometry {
     /// of `seed` within `mask`.
     #[inline]
     pub fn flood_fill(&self, seed: Bitboard, mask: Bitboard) -> Bitboard {
-        let nw = self.nw;
+        let nw = self.nw as usize;
         let mut filled = seed.and_w(mask, nw);
         loop {
             let nbrs = self.neighbors(&filled);
@@ -559,8 +563,8 @@ mod tests {
     #[test]
     fn test_geometry_9x9() {
         let geo = BoardGeometry::new(9, 9);
-        assert_eq!(geo.area, 81);
-        assert_eq!(geo.nw, 2);
+        assert_eq!(geo.area, 81u16);
+        assert_eq!(geo.nw, 2u8);
         assert_eq!(geo.board_mask.count(), 81);
 
         // Column 0 positions: 0, 9, 18, 27, ...
@@ -707,17 +711,18 @@ mod tests {
         // For 9x9 (nw=2), bounded shifts should produce the same result
         // as unbounded for bits within the board
         let geo = BoardGeometry::new(9, 9);
-        let nw1 = geo.nw + 1;
+        let nw = geo.nw as usize;
+        let nw1 = nw + 1;
 
         // Test shift_left_w vs shift_left for various positions
         for idx in [0, 1, 8, 9, 40, 63, 64, 79, 80] {
             let bb = Bitboard::single(idx);
             let full = bb.shift_left(1) & geo.board_mask;
-            let bounded = bb.shift_left_w(1, nw1).and_w(geo.board_mask, geo.nw);
+            let bounded = bb.shift_left_w(1, nw1).and_w(geo.board_mask, nw);
             assert_eq!(full, bounded, "shift_left mismatch at idx={}", idx);
 
             let full_w = bb.shift_left(9) & geo.board_mask;
-            let bounded_w = bb.shift_left_w(9, nw1).and_w(geo.board_mask, geo.nw);
+            let bounded_w = bb.shift_left_w(9, nw1).and_w(geo.board_mask, nw);
             assert_eq!(
                 full_w, bounded_w,
                 "shift_left(width) mismatch at idx={}",
@@ -729,7 +734,7 @@ mod tests {
         for idx in [0, 1, 8, 9, 40, 63, 64, 79, 80] {
             let bb = Bitboard::single(idx);
             let full = bb.shift_right(1) & geo.board_mask;
-            let bounded = bb.shift_right_w(1, geo.nw).and_w(geo.board_mask, geo.nw);
+            let bounded = bb.shift_right_w(1, nw).and_w(geo.board_mask, nw);
             assert_eq!(full, bounded, "shift_right mismatch at idx={}", idx);
         }
     }
@@ -737,9 +742,12 @@ mod tests {
     #[test]
     fn test_bounded_neighbors_matches_unbounded() {
         // Verify bounded neighbors produces identical results for all board sizes
-        for (w, h) in [(5, 5), (8, 8), (9, 9), (13, 7), (19, 19)] {
+        for (w, h) in [(5u8, 5u8), (8, 8), (9, 9), (13, 7), (19, 19)] {
             let geo = BoardGeometry::new(w, h);
-            for idx in 0..geo.area {
+            let area = geo.area as usize;
+            let w = w as usize;
+            let h = h as usize;
+            for idx in 0..area {
                 let bb = Bitboard::single(idx);
                 let nbrs = geo.neighbors(&bb);
                 // Verify result is within board
@@ -782,12 +790,12 @@ mod tests {
 
     #[test]
     fn test_nw_values() {
-        assert_eq!(BoardGeometry::new(2, 2).nw, 1); // 4 bits
-        assert_eq!(BoardGeometry::new(5, 5).nw, 1); // 25 bits
-        assert_eq!(BoardGeometry::new(8, 8).nw, 1); // 64 bits
-        assert_eq!(BoardGeometry::new(9, 9).nw, 2); // 81 bits
-        assert_eq!(BoardGeometry::new(19, 19).nw, 6); // 361 bits
-        assert_eq!(BoardGeometry::new(32, 32).nw, 16); // 1024 bits
+        assert_eq!(BoardGeometry::new(2, 2).nw, 1u8); // 4 bits
+        assert_eq!(BoardGeometry::new(5, 5).nw, 1u8); // 25 bits
+        assert_eq!(BoardGeometry::new(8, 8).nw, 1u8); // 64 bits
+        assert_eq!(BoardGeometry::new(9, 9).nw, 2u8); // 81 bits
+        assert_eq!(BoardGeometry::new(19, 19).nw, 6u8); // 361 bits
+        assert_eq!(BoardGeometry::new(32, 32).nw, 16u8); // 1024 bits
     }
 
     #[test]

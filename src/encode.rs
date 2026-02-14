@@ -18,8 +18,8 @@ pub const TOTAL_INPUT_PLANES: usize = (HISTORY_LENGTH * PIECE_PLANES) + CONSTANT
 /// Returns (flat_data, num_planes, height, width), where flat_data is in row-major order
 pub fn encode_game_planes(game: &Game) -> (Vec<f32>, usize, usize, usize) {
     let perspective = game.turn();
-    let width = game.width();
-    let height = game.height();
+    let width = game.width() as usize;
+    let height = game.height() as usize;
     let num_planes = TOTAL_INPUT_PLANES;
     let board_size = height * width;
     let total_size = num_planes * board_size;
@@ -59,16 +59,17 @@ pub fn encode_game_planes(game: &Game) -> (Vec<f32>, usize, usize, usize) {
 }
 
 /// Encode a move as an action index for the policy head
-pub fn encode_move(move_: &Move, board_width: usize, board_height: usize) -> usize {
+pub fn encode_move(move_: &Move, board_width: u8, board_height: u8) -> usize {
     match move_ {
-        Move::Place { col, row } => row * board_width + col,
-        Move::Pass => board_width * board_height,
+        Move::Place { col, row } => *row as usize * board_width as usize + *col as usize,
+        Move::Pass => board_width as usize * board_height as usize,
     }
 }
 
 /// Returns the column number and row where the piece would land
-pub fn decode_move(action: usize, board_width: usize, board_height: usize) -> Option<Move> {
-    let board_size = board_width * board_height;
+pub fn decode_move(action: usize, board_width: u8, board_height: u8) -> Option<Move> {
+    let w = board_width as usize;
+    let board_size = w * board_height as usize;
 
     if action == board_size {
         return Some(Move::pass());
@@ -78,14 +79,14 @@ pub fn decode_move(action: usize, board_width: usize, board_height: usize) -> Op
         return None;
     }
 
-    let col = action % board_width;
-    let row = action / board_width;
+    let col = (action % w) as u8;
+    let row = (action / w) as u8;
 
     Some(Move::place(col, row))
 }
 
-pub fn total_actions(board_width: usize, board_height: usize) -> usize {
-    board_width * board_height + 1
+pub fn total_actions(board_width: u8, board_height: u8) -> usize {
+    board_width as usize * board_height as usize + 1
 }
 
 #[cfg(test)]
@@ -136,8 +137,8 @@ mod tests {
 
     #[test]
     fn test_encode_decode_move() {
-        let width = 9;
-        let height = 9;
+        let width: u8 = 9;
+        let height: u8 = 9;
 
         for row in 0..height {
             for col in 0..width {
@@ -151,7 +152,7 @@ mod tests {
 
         let pass = Move::pass();
         let encoded_pass = encode_move(&pass, width, height);
-        assert_eq!(encoded_pass, width * height);
+        assert_eq!(encoded_pass, width as usize * height as usize);
 
         let decoded_pass = decode_move(encoded_pass, width, height).unwrap();
         assert_eq!(decoded_pass, pass);
@@ -227,20 +228,22 @@ mod tests {
 
                         let (data, num_planes, height, width) = encode_game_planes(&game);
                         assert_eq!(num_planes, TOTAL_INPUT_PLANES);
-                        assert_eq!(height, game.height());
-                        assert_eq!(width, game.width());
+                        assert_eq!(height, game.height() as usize);
+                        assert_eq!(width, game.width() as usize);
                         assert_eq!(data.len(), num_planes * height * width);
 
                         for move_ in &legal_moves {
-                            let action = encode_move(move_, game.width(), game.height());
+                            let w = game.width();
+                            let h = game.height();
+                            let action = encode_move(move_, w, h);
                             assert!(
-                                action <= game.width() * game.height(),
+                                action <= w as usize * h as usize,
                                 "Invalid action {} for move {:?}",
                                 action,
                                 move_
                             );
 
-                            let decoded = decode_move(action, game.width(), game.height());
+                            let decoded = decode_move(action, w, h);
                             assert!(decoded.is_some(), "Failed to decode action {}", action);
 
                             thread_moves_tested += 1;
@@ -332,8 +335,8 @@ mod tests {
         let (data, num_planes, height, width) = encode_game_planes(&game);
 
         assert_eq!(num_planes, TOTAL_INPUT_PLANES);
-        assert_eq!(height, game.height());
-        assert_eq!(width, game.width());
+        assert_eq!(height, game.height() as usize);
+        assert_eq!(width, game.width() as usize);
         assert_eq!(data.len(), num_planes * height * width);
     }
 
@@ -356,11 +359,12 @@ mod tests {
 
     #[test]
     fn test_invalid_action_decoding() {
-        let width = 9;
-        let height = 9;
+        let width: u8 = 9;
+        let height: u8 = 9;
+        let board_size = width as usize * height as usize;
 
-        assert!(decode_move(width * height + 1, width, height).is_none());
-        assert!(decode_move(width * height + 10, width, height).is_none());
+        assert!(decode_move(board_size + 1, width, height).is_none());
+        assert!(decode_move(board_size + 10, width, height).is_none());
         assert!(decode_move(1000, width, height).is_none());
     }
 
@@ -368,8 +372,8 @@ mod tests {
     fn test_encode_arbitrary_board_size_19x19() {
         let game = Game::new(19, 19);
 
-        assert_eq!(game.width(), 19);
-        assert_eq!(game.height(), 19);
+        assert_eq!(game.width(), 19u8);
+        assert_eq!(game.height(), 19u8);
 
         let (data, num_planes, height, width) = encode_game_planes(&game);
         assert_eq!(num_planes, TOTAL_INPUT_PLANES);
@@ -377,8 +381,8 @@ mod tests {
         assert_eq!(width, 19);
         assert_eq!(data.len(), num_planes * height * width);
 
-        for row in 0..19 {
-            for col in 0..19 {
+        for row in 0u8..19 {
+            for col in 0u8..19 {
                 let move_ = Move::place(col, row);
                 let encoded = encode_move(&move_, 19, 19);
                 let decoded = decode_move(encoded, 19, 19).unwrap();
@@ -393,8 +397,8 @@ mod tests {
     fn test_encode_arbitrary_board_size_5x5() {
         let game = Game::new(5, 5);
 
-        assert_eq!(game.width(), 5);
-        assert_eq!(game.height(), 5);
+        assert_eq!(game.width(), 5u8);
+        assert_eq!(game.height(), 5u8);
 
         let (data, num_planes, height, width) = encode_game_planes(&game);
         assert_eq!(num_planes, TOTAL_INPUT_PLANES);

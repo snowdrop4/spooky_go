@@ -25,28 +25,28 @@ pub struct Game {
     consecutive_passes: u8,
     ko_point: Option<Position>,
     komi: f32,
-    min_moves_before_pass_ends: usize,
-    max_moves: usize,
+    min_moves_before_pass_ends: u16,
+    max_moves: u16,
 }
 
 impl Game {
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(width: u8, height: u8) -> Self {
         Self::with_komi(width, height, DEFAULT_KOMI)
     }
 
-    pub fn with_komi(width: usize, height: usize, komi: f32) -> Self {
-        let board_size = width * height;
+    pub fn with_komi(width: u8, height: u8, komi: f32) -> Self {
+        let board_size = width as u16 * height as u16;
         let min_moves_before_pass_ends = board_size / 2;
         let max_moves = board_size * 3;
         Self::with_options(width, height, komi, min_moves_before_pass_ends, max_moves)
     }
 
     pub fn with_options(
-        width: usize,
-        height: usize,
+        width: u8,
+        height: u8,
         komi: f32,
-        min_moves_before_pass_ends: usize,
-        max_moves: usize,
+        min_moves_before_pass_ends: u16,
+        max_moves: u16,
     ) -> Self {
         Game {
             board: Board::new(width, height),
@@ -71,11 +71,11 @@ impl Game {
         self.komi
     }
 
-    pub fn min_moves_before_pass_ends(&self) -> usize {
+    pub fn min_moves_before_pass_ends(&self) -> u16 {
         self.min_moves_before_pass_ends
     }
 
-    pub fn max_moves(&self) -> usize {
+    pub fn max_moves(&self) -> u16 {
         self.max_moves
     }
 
@@ -83,11 +83,11 @@ impl Game {
         self.move_history.len()
     }
 
-    pub fn width(&self) -> usize {
+    pub fn width(&self) -> u8 {
         self.board.width()
     }
 
-    pub fn height(&self) -> usize {
+    pub fn height(&self) -> u8 {
         self.board.height()
     }
 
@@ -171,7 +171,7 @@ impl Game {
     /// Check if placing a stone at `idx` for `player` would be suicide.
     /// Zero heap allocations — works entirely on stack-based bitboards.
     fn would_be_suicide(&self, idx: usize, player: Player) -> bool {
-        let nw = self.geo.nw;
+        let nw = self.geo.nw as usize;
         let bit = Bitboard::single(idx);
         let own = self.board.stones_for(player).or_w(bit, nw);
         let opp = self.board.stones_for(player.opposite());
@@ -231,7 +231,8 @@ impl Game {
 
         let mut moves = Vec::new();
         let empty = self.board.empty_squares(self.geo.board_mask);
-        let ko_idx = self.ko_point.map(|p| p.to_index(self.geo.width));
+        let w = self.geo.width;
+        let ko_idx = self.ko_point.map(|p| p.to_index(w));
 
         for idx in empty.iter_ones() {
             if let Some(ki) = ko_idx {
@@ -244,7 +245,7 @@ impl Game {
                 continue;
             }
 
-            let pos = Position::from_index(idx, self.geo.width);
+            let pos = Position::from_index(idx, w);
             moves.push(Move::place(pos.col, pos.row));
         }
 
@@ -267,7 +268,7 @@ impl Game {
                     return false;
                 }
 
-                let idx = pos.to_index(self.geo.width);
+                let idx = pos.to_index(self.board.width());
 
                 if self.board.occupied().get(idx) {
                     return false;
@@ -302,7 +303,7 @@ impl Game {
                 self.consecutive_passes += 1;
 
                 if self.consecutive_passes >= 2
-                    && self.move_history.len() + 1 >= self.min_moves_before_pass_ends
+                    && self.move_history.len() + 1 >= self.min_moves_before_pass_ends as usize
                 {
                     self.is_over = true;
                     self.outcome = Some(self.determine_outcome());
@@ -312,7 +313,7 @@ impl Game {
                 self.consecutive_passes = 0;
 
                 let pos = Position::new(*col, *row);
-                let idx = pos.to_index(self.geo.width);
+                let idx = pos.to_index(self.board.width());
                 self.board.set_bit(idx, self.current_player);
 
                 let opponent = self.current_player.opposite();
@@ -362,7 +363,8 @@ impl Game {
                             let placed_liberties =
                                 placed_neighbors & self.board.empty_squares(self.geo.board_mask);
                             if placed_liberties.count() == 1 {
-                                self.ko_point = Some(Position::from_index(cap_idx, self.geo.width));
+                                self.ko_point =
+                                    Some(Position::from_index(cap_idx, self.board.width()));
                             }
                         }
                     }
@@ -379,7 +381,7 @@ impl Game {
         self.current_player = self.current_player.opposite();
 
         // Check max moves limit
-        if !self.is_over && self.move_history.len() >= self.max_moves {
+        if !self.is_over && self.move_history.len() >= self.max_moves as usize {
             self.is_over = true;
             self.outcome = Some(self.determine_outcome());
         }
@@ -400,7 +402,7 @@ impl Game {
                 }
                 Move::Place { col, row } => {
                     let pos = Position::new(col, row);
-                    let idx = pos.to_index(self.geo.width);
+                    let idx = pos.to_index(self.board.width());
                     self.board.clear_bit(idx);
 
                     // Restore captured stones for the opponent
@@ -517,7 +519,7 @@ mod tests {
     fn test_pass_move_requires_min_moves() {
         // Default 9x9 game has min_moves = 40 (81/2)
         let mut game = Game::new(9, 9);
-        assert_eq!(game.min_moves_before_pass_ends(), 40);
+        assert_eq!(game.min_moves_before_pass_ends(), 40u16);
 
         // Double pass shouldn't end the game yet
         assert!(game.make_move(&Move::pass()));
