@@ -94,14 +94,12 @@ impl Bitboard {
         let mut out = [0u64; 16];
 
         if bit_shift == 0 {
-            for i in word_shift..16 {
-                out[i] = self.words[i - word_shift];
-            }
+            out[word_shift..16].copy_from_slice(&self.words[..(16 - word_shift)]);
         } else {
-            for i in word_shift..16 {
-                out[i] = self.words[i - word_shift] << bit_shift;
+            for (i, o) in out.iter_mut().enumerate().skip(word_shift) {
+                *o = self.words[i - word_shift] << bit_shift;
                 if i > word_shift {
-                    out[i] |= self.words[i - word_shift - 1] >> (64 - bit_shift);
+                    *o |= self.words[i - word_shift - 1] >> (64 - bit_shift);
                 }
             }
         }
@@ -123,14 +121,12 @@ impl Bitboard {
         let mut out = [0u64; 16];
 
         if bit_shift == 0 {
-            for i in 0..16 - word_shift {
-                out[i] = self.words[i + word_shift];
-            }
+            out[..(16 - word_shift)].copy_from_slice(&self.words[word_shift..]);
         } else {
-            for i in 0..16 - word_shift {
-                out[i] = self.words[i + word_shift] >> bit_shift;
+            for (i, o) in out.iter_mut().enumerate().take(16 - word_shift) {
+                *o = self.words[i + word_shift] >> bit_shift;
                 if i + word_shift + 1 < 16 {
-                    out[i] |= self.words[i + word_shift + 1] << (64 - bit_shift);
+                    *o |= self.words[i + word_shift + 1] << (64 - bit_shift);
                 }
             }
         }
@@ -159,8 +155,8 @@ impl Bitboard {
         debug_assert!(n > 0 && n < 64);
         let mut out = [0u64; 16];
         out[0] = self.words[0] << n;
-        for i in 1..nw {
-            out[i] = (self.words[i] << n) | (self.words[i - 1] >> (64 - n));
+        for (i, o) in out.iter_mut().enumerate().take(nw).skip(1) {
+            *o = (self.words[i] << n) | (self.words[i - 1] >> (64 - n));
         }
         Bitboard { words: out }
     }
@@ -170,10 +166,10 @@ impl Bitboard {
     pub(crate) fn shift_right_w(&self, n: usize, nw: usize) -> Self {
         debug_assert!(n > 0 && n < 64);
         let mut out = [0u64; 16];
-        for i in 0..nw {
-            out[i] = self.words[i] >> n;
+        for (i, o) in out.iter_mut().enumerate().take(nw) {
+            *o = self.words[i] >> n;
             if i + 1 < 16 {
-                out[i] |= self.words[i + 1] << (64 - n);
+                *o |= self.words[i + 1] << (64 - n);
             }
         }
         Bitboard { words: out }
@@ -183,8 +179,8 @@ impl Bitboard {
     #[inline]
     pub(crate) fn and_w(self, rhs: Bitboard, nw: usize) -> Bitboard {
         let mut out = [0u64; 16];
-        for i in 0..nw {
-            out[i] = self.words[i] & rhs.words[i];
+        for (i, o) in out.iter_mut().enumerate().take(nw) {
+            *o = self.words[i] & rhs.words[i];
         }
         Bitboard { words: out }
     }
@@ -193,8 +189,8 @@ impl Bitboard {
     #[inline]
     pub(crate) fn or_w(self, rhs: Bitboard, nw: usize) -> Bitboard {
         let mut out = [0u64; 16];
-        for i in 0..nw {
-            out[i] = self.words[i] | rhs.words[i];
+        for (i, o) in out.iter_mut().enumerate().take(nw) {
+            *o = self.words[i] | rhs.words[i];
         }
         Bitboard { words: out }
     }
@@ -203,8 +199,8 @@ impl Bitboard {
     #[inline]
     pub(crate) fn andnot_w(self, rhs: Bitboard, nw: usize) -> Bitboard {
         let mut out = [0u64; 16];
-        for i in 0..nw {
-            out[i] = self.words[i] & !rhs.words[i];
+        for (i, o) in out.iter_mut().enumerate().take(nw) {
+            *o = self.words[i] & !rhs.words[i];
         }
         Bitboard { words: out }
     }
@@ -242,25 +238,6 @@ impl Bitboard {
         true
     }
 
-    /// Population count bounded to `nw` words.
-    #[inline]
-    pub(crate) fn count_w(&self, nw: usize) -> u32 {
-        let mut c = 0u32;
-        for i in 0..nw {
-            c += self.words[i].count_ones();
-        }
-        c
-    }
-
-    /// Iterate over set-bit indices, only scanning `nw` words.
-    #[inline]
-    pub(crate) fn iter_ones_w(&self, nw: u8) -> BitIterator {
-        BitIterator {
-            words: self.words,
-            word_index: 0,
-            word_limit: nw,
-        }
-    }
 }
 
 impl BitAnd for Bitboard {
@@ -268,8 +245,8 @@ impl BitAnd for Bitboard {
     #[inline]
     fn bitand(self, rhs: Bitboard) -> Bitboard {
         let mut out = [0u64; 16];
-        for i in 0..16 {
-            out[i] = self.words[i] & rhs.words[i];
+        for (i, o) in out.iter_mut().enumerate() {
+            *o = self.words[i] & rhs.words[i];
         }
         Bitboard { words: out }
     }
@@ -289,8 +266,8 @@ impl BitOr for Bitboard {
     #[inline]
     fn bitor(self, rhs: Bitboard) -> Bitboard {
         let mut out = [0u64; 16];
-        for i in 0..16 {
-            out[i] = self.words[i] | rhs.words[i];
+        for (i, o) in out.iter_mut().enumerate() {
+            *o = self.words[i] | rhs.words[i];
         }
         Bitboard { words: out }
     }
@@ -310,8 +287,8 @@ impl Not for Bitboard {
     #[inline]
     fn not(self) -> Bitboard {
         let mut out = [0u64; 16];
-        for i in 0..16 {
-            out[i] = !self.words[i];
+        for (i, o) in out.iter_mut().enumerate() {
+            *o = !self.words[i];
         }
         Bitboard { words: out }
     }
@@ -809,14 +786,6 @@ mod tests {
         assert!(!result.get(20));
     }
 
-    #[test]
-    fn test_iter_ones_w() {
-        // Bits in words 0, 1, and 3
-        let bb = Bitboard::single(3) | Bitboard::single(64) | Bitboard::single(200);
-        // Only scan 2 words — should find bits 3 and 64
-        let indices: Vec<usize> = bb.iter_ones_w(2).collect();
-        assert_eq!(indices, vec![3, 64]);
-    }
 
     #[test]
     fn test_8x8_word_boundary() {

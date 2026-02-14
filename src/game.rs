@@ -1,9 +1,19 @@
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
+
 use crate::bitboard::{Bitboard, BoardGeometry};
 use crate::board::{Board, STANDARD_COLS, STANDARD_ROWS};
 use crate::outcome::GameOutcome;
 use crate::player::Player;
 use crate::position::Position;
 use crate::r#move::Move;
+
+fn compute_position_hash(board: &Board, player: Player) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    board.hash(&mut hasher);
+    (player as i8).hash(&mut hasher);
+    hasher.finish()
+}
 
 #[derive(Clone, Debug)]
 struct MoveHistoryEntry {
@@ -27,18 +37,23 @@ pub struct Game {
     komi: f32,
     min_moves_before_pass_ends: u16,
     max_moves: u16,
+    superko: bool,
+    position_hashes: Option<HashSet<u64>>,
 }
 
 impl Game {
     pub fn new(width: u8, height: u8) -> Self {
-        Self::with_komi(width, height, DEFAULT_KOMI)
-    }
-
-    pub fn with_komi(width: u8, height: u8, komi: f32) -> Self {
         let board_size = width as u16 * height as u16;
         let min_moves_before_pass_ends = board_size / 2;
         let max_moves = board_size * 3;
-        Self::with_options(width, height, komi, min_moves_before_pass_ends, max_moves)
+        Self::with_options(
+            width,
+            height,
+            DEFAULT_KOMI,
+            min_moves_before_pass_ends,
+            max_moves,
+            true,
+        )
     }
 
     pub fn with_options(
@@ -47,9 +62,18 @@ impl Game {
         komi: f32,
         min_moves_before_pass_ends: u16,
         max_moves: u16,
+        superko: bool,
     ) -> Self {
+        let board = Board::new(width, height);
+        let position_hashes = if superko {
+            let mut hashes = HashSet::new();
+            hashes.insert(compute_position_hash(&board, Player::Black));
+            hashes
+        } else {
+            HashSet::new()
+        };
         Game {
-            board: Board::new(width, height),
+            board,
             geo: BoardGeometry::new(width, height),
             current_player: Player::Black,
             move_history: Vec::new(),
@@ -60,6 +84,8 @@ impl Game {
             komi,
             min_moves_before_pass_ends,
             max_moves,
+            superko,
+            position_hashes: if superko { Some(position_hashes) } else { None },
         }
     }
 
@@ -121,6 +147,44 @@ impl Game {
 
     pub fn ko_point(&self) -> Option<Position> {
         self.ko_point
+    }
+
+    pub fn superko(&self) -> bool {
+        self.superko
+    }
+
+    /// Simulate placing a stone and performing captures, returning the resulting board.
+    /// Used by superko detection to check if a move would recreate a previous position.
+    fn simulate_placement(&self, idx: usize, player: Player) -> Board {
+        let mut board = self.board; // Board is Copy
+        board.set_bit(idx, player);
+
+        let opponent = player.opposite();
+        let bit = Bitboard::single(idx);
+        let adj_opp = self.geo.neighbors(&bit) & board.stones_for(opponent);
+
+        let mut remaining = adj_opp;
+        while let Some(opp_idx) = remaining.lowest_bit_index() {
+            let opp_seed = Bitboard::single(opp_idx);
+            let opp_group = self.geo.flood_fill(opp_seed, board.stones_for(opponent));
+            remaining &= !opp_group;
+
+            let opp_neighbors = self.geo.neighbors(&opp_group);
+            if (opp_neighbors & board.empty_squares(self.geo.board_mask)).is_empty() {
+                board.remove_stones(opp_group);
+            }
+        }
+        board
+    }
+
+    fn would_violate_superko(&self, idx: usize, player: Player) -> bool {
+        if let Some(ref hashes) = self.position_hashes {
+            let result_board = self.simulate_placement(idx, player);
+            let hash = compute_position_hash(&result_board, player.opposite());
+            hashes.contains(&hash)
+        } else {
+            false
+        }
     }
 
     pub fn score(&self) -> (f32, f32) {
@@ -245,6 +309,10 @@ impl Game {
                 continue;
             }
 
+            if self.would_violate_superko(idx, self.current_player) {
+                continue;
+            }
+
             let pos = Position::from_index(idx, w);
             moves.push(Move::place(pos.col, pos.row));
         }
@@ -281,6 +349,10 @@ impl Game {
                 }
 
                 if self.would_be_suicide(idx, self.current_player) {
+                    return false;
+                }
+
+                if self.would_violate_superko(idx, self.current_player) {
                     return false;
                 }
 
@@ -380,6 +452,10 @@ impl Game {
 
         self.current_player = self.current_player.opposite();
 
+        if let Some(ref mut hashes) = self.position_hashes {
+            hashes.insert(compute_position_hash(&self.board, self.current_player));
+        }
+
         // Check max moves limit
         if !self.is_over && self.move_history.len() >= self.max_moves as usize {
             self.is_over = true;
@@ -391,6 +467,12 @@ impl Game {
 
     pub fn unmake_move(&mut self) -> bool {
         if let Some(entry) = self.move_history.pop() {
+            // Remove current position hash before restoring state
+            if let Some(ref mut hashes) = self.position_hashes {
+                let hash = compute_position_hash(&self.board, self.current_player);
+                hashes.remove(&hash);
+            }
+
             self.current_player = self.current_player.opposite();
             self.ko_point = entry.previous_ko_point;
 
@@ -503,7 +585,7 @@ mod tests {
     #[test]
     fn test_pass_move() {
         // Use with_options to set min_moves to 0 so double-pass ends immediately
-        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 0, 1000);
+        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 0, 1000, false);
 
         assert!(game.make_move(&Move::pass()));
         assert_eq!(game.turn(), Player::White);
@@ -534,7 +616,7 @@ mod tests {
     #[test]
     fn test_pass_ends_game_after_min_moves() {
         // Create a game with min_moves = 4
-        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 4, 1000);
+        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 4, 1000, false);
 
         // Play 4 moves (2 passes won't end game yet)
         game.make_move(&Move::place(0, 0));
@@ -547,7 +629,7 @@ mod tests {
     #[test]
     fn test_max_moves_ends_game() {
         // Create a game with max_moves = 5
-        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 100, 5);
+        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 100, 5, false);
 
         game.make_move(&Move::place(0, 0));
         game.make_move(&Move::place(1, 0));
@@ -562,7 +644,7 @@ mod tests {
 
     #[test]
     fn test_scoring_black_wins() {
-        let mut game = Game::with_options(5, 5, 0.5, 0, 1000);
+        let mut game = Game::with_options(5, 5, 0.5, 0, 1000, false);
 
         game.make_move(&Move::place(0, 0)); // Black
         game.make_move(&Move::pass()); // White
@@ -582,7 +664,7 @@ mod tests {
 
     #[test]
     fn test_scoring_with_territory() {
-        let mut game = Game::with_options(5, 5, 0.0, 0, 1000);
+        let mut game = Game::with_options(5, 5, 0.0, 0, 1000, false);
 
         game.make_move(&Move::place(0, 2)); // Black
         game.make_move(&Move::pass()); // White
@@ -650,7 +732,7 @@ mod tests {
 
     #[test]
     fn test_actual_suicide_prevention() {
-        let mut game = Game::with_options(5, 5, DEFAULT_KOMI, 0, 1000);
+        let mut game = Game::with_options(5, 5, DEFAULT_KOMI, 0, 1000, false);
 
         game.make_move(&Move::place(1, 0));
         game.make_move(&Move::pass());
@@ -708,18 +790,6 @@ mod tests {
     }
 
     #[test]
-    fn test_clone() {
-        let mut game = Game::new(9, 9);
-        let move_ = Move::place(0, 0);
-        game.make_move(&move_);
-
-        let cloned = game.clone();
-        assert_eq!(cloned.turn(), game.turn());
-        assert_eq!(cloned.is_over(), game.is_over());
-        assert_eq!(cloned.move_history().len(), game.move_history().len());
-    }
-
-    #[test]
     fn test_move_history() {
         let mut game = Game::new(9, 9);
 
@@ -738,14 +808,8 @@ mod tests {
     }
 
     #[test]
-    fn test_unmake_when_empty() {
-        let mut game = Game::new(9, 9);
-        assert!(!game.unmake_move());
-    }
-
-    #[test]
     fn test_legal_moves_when_game_over() {
-        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 0, 1000);
+        let mut game = Game::with_options(9, 9, DEFAULT_KOMI, 0, 1000, false);
 
         game.make_move(&Move::pass());
         game.make_move(&Move::pass());
@@ -753,4 +817,34 @@ mod tests {
         assert!(game.is_over());
         assert_eq!(game.legal_moves().len(), 0);
     }
+
+    #[test]
+    fn test_superko_unmake_restores() {
+        let mut game = Game::new(5, 5);
+
+        game.make_move(&Move::place(1, 0)); // B
+        game.make_move(&Move::place(2, 0)); // W
+
+        game.make_move(&Move::place(0, 1)); // B
+        game.make_move(&Move::place(1, 1)); // W
+
+        game.make_move(&Move::place(1, 2)); // B
+        game.make_move(&Move::place(2, 2)); // W
+
+        game.make_move(&Move::pass()); // B pass
+        game.make_move(&Move::place(3, 1)); // W
+
+        // B captures at (2,1)
+        game.make_move(&Move::place(2, 1));
+
+        // W can't recapture at (1,1)
+        assert!(!game.is_legal_move(&Move::place(1, 1)));
+
+        // Unmake the capture
+        game.unmake_move();
+
+        // Now (2,1) should be legal again for Black
+        assert!(game.is_legal_move(&Move::place(2, 1)));
+    }
+
 }

@@ -135,29 +135,14 @@ mod python_bindings {
         }
 
         #[staticmethod]
-        pub fn with_komi(width: usize, height: usize, komi: f32) -> PyResult<Self> {
-            if !(2..=32).contains(&width) {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    "Board width must be between 2 and 32",
-                ));
-            }
-            if !(2..=32).contains(&height) {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    "Board height must be between 2 and 32",
-                ));
-            }
-            Ok(PyGame {
-                game: Game::with_komi(width as u8, height as u8, komi),
-            })
-        }
-
-        #[staticmethod]
+        #[pyo3(signature = (width, height, komi, min_moves_before_pass_ends, max_moves, superko=false))]
         pub fn with_options(
             width: usize,
             height: usize,
             komi: f32,
             min_moves_before_pass_ends: usize,
             max_moves: usize,
+            superko: bool,
         ) -> PyResult<Self> {
             if !(2..=32).contains(&width) {
                 return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -176,6 +161,7 @@ mod python_bindings {
                     komi,
                     min_moves_before_pass_ends as u16,
                     max_moves as u16,
+                    superko,
                 ),
             })
         }
@@ -322,6 +308,10 @@ mod python_bindings {
             }
         }
 
+        pub fn superko(&self) -> bool {
+            self.game.superko()
+        }
+
         pub fn ko_point(&self) -> Option<(usize, usize)> {
             self.game
                 .ko_point()
@@ -365,11 +355,12 @@ mod python_bindings {
 
         pub fn __repr__(&self) -> String {
             format!(
-                "Game(width={}, height={}, turn={:?}, over={})",
+                "Game(width={}, height={}, turn={:?}, over={}, superko={})",
                 self.game.board().width(),
                 self.game.board().height(),
                 self.game.turn(),
-                self.game.is_over()
+                self.game.is_over(),
+                self.game.superko()
             )
         }
     }
