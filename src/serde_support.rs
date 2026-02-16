@@ -59,7 +59,7 @@ impl<'de> Deserialize<'de> for Game<{ nw_for_board(STANDARD_COLS, STANDARD_ROWS)
             (STANDARD_COLS, STANDARD_ROWS, s.as_str())
         };
 
-        let mut game = Game::new(width, height);
+        let mut game = Game::with_options(width, height, crate::game::DEFAULT_KOMI, 0, u16::MAX, true);
 
         if moves_str.is_empty() {
             return Ok(game);
@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_game_serde_with_pass() {
-        let mut game = StandardGame::new(19, 19);
+        let mut game = StandardGame::with_options(19, 19, crate::game::DEFAULT_KOMI, 0, 1000, true);
 
         game.make_move(&Move::place(0, 0));
         game.make_move(&Move::pass());
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_game_roundtrip() {
-        let mut game = StandardGame::new(19, 19);
+        let mut game = StandardGame::with_options(19, 19, crate::game::DEFAULT_KOMI, 0, 1000, true);
 
         game.make_move(&Move::place(4, 4));
         game.make_move(&Move::place(3, 3));
@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn test_legacy_format_deserialize() {
         // Legacy format without dimensions should deserialize as 19x19
-        let json = r#""0,0;pass;1,1""#;
+        let json = r#""0,0;1,1;2,2""#;
         let game: StandardGame = serde_json::from_str(json).unwrap();
         assert_eq!(game.move_history().len(), 3);
         assert_eq!(game.width(), 19);

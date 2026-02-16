@@ -233,12 +233,12 @@ mod python_bindings {
         }
 
         #[staticmethod]
-        #[pyo3(signature = (width, height, komi, min_moves_before_pass_ends, max_moves, superko=false))]
+        #[pyo3(signature = (width, height, komi, min_moves_before_pass_possible, max_moves, superko=false))]
         pub fn with_options(
             width: usize,
             height: usize,
             komi: f32,
-            min_moves_before_pass_ends: usize,
+            min_moves_before_pass_possible: usize,
             max_moves: usize,
             superko: bool,
         ) -> PyResult<Self> {
@@ -257,7 +257,7 @@ mod python_bindings {
                     width as u8,
                     height as u8,
                     komi,
-                    min_moves_before_pass_ends as u16,
+                    min_moves_before_pass_possible as u16,
                     max_moves as u16,
                     superko,
                 ),
@@ -275,8 +275,8 @@ mod python_bindings {
             dispatch_game!(&self.inner, g => g.komi())
         }
 
-        pub fn min_moves_before_pass_ends(&self) -> usize {
-            dispatch_game!(&self.inner, g => g.min_moves_before_pass_ends() as usize)
+        pub fn min_moves_before_pass_possible(&self) -> usize {
+            dispatch_game!(&self.inner, g => g.min_moves_before_pass_possible() as usize)
         }
 
         pub fn max_moves(&self) -> usize {
