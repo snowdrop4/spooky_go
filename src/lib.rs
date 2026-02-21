@@ -233,7 +233,7 @@ mod python_bindings {
         }
 
         #[staticmethod]
-        #[pyo3(signature = (width, height, komi, min_moves_before_pass_possible, max_moves, superko=false))]
+        #[pyo3(signature = (width, height, komi, min_moves_before_pass_possible, max_moves, superko))]
         pub fn with_options(
             width: usize,
             height: usize,
