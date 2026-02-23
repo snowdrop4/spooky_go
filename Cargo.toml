@@ -2,6 +2,10 @@
 name = "spooky_go"
 version = "0.2.20"
 edition = "2021"
+description = "Go board game engine"
+license = "MIT"
+repository = "https://github.com/snowdrop4/spooky-go"
+include = ["src/**/*.rs", "benches/**/*.rs", "Cargo.toml", "README.md", "LICENSE.md"]
 
 [lib]
 name = "spooky_go"
