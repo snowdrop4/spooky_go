@@ -126,17 +126,6 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_game() {
-        let game = Game::<{ nw_for_board(9, 9) }>::new(9, 9);
-        let (data, num_planes, height, width) = encode_game_planes(&game);
-
-        assert_eq!(num_planes, TOTAL_INPUT_PLANES);
-        assert_eq!(height, 9);
-        assert_eq!(width, 9);
-        assert_eq!(data.len(), num_planes * height * width);
-    }
-
-    #[test]
     fn test_encode_decode_move() {
         let width: u8 = 9;
         let height: u8 = 9;

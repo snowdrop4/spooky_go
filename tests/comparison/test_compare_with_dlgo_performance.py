@@ -20,7 +20,7 @@ def test_initial_move_generation_speed() -> None:
     for _ in range(iterations):
         game = spooky_go.Game(9, 9)
         moves = game.legal_moves()
-        assert len(moves) == 82  # 81 positions + pass
+        assert len(moves) == 81  # 81 positions (pass not legal before min_moves)
     rust_time = time.time() - rust_start
 
     # Time dlgo
@@ -45,7 +45,7 @@ def test_initial_move_generation_speed_19x19() -> None:
     for _ in range(iterations):
         game = spooky_go.Game(19, 19)
         moves = game.legal_moves()
-        assert len(moves) == 362  # 361 positions + pass
+        assert len(moves) == 361  # 361 positions (pass not legal before min_moves)
     rust_time = time.time() - rust_start
 
     # Time dlgo

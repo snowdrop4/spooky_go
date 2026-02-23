@@ -59,7 +59,8 @@ impl<'de> Deserialize<'de> for Game<{ nw_for_board(STANDARD_COLS, STANDARD_ROWS)
             (STANDARD_COLS, STANDARD_ROWS, s.as_str())
         };
 
-        let mut game = Game::with_options(width, height, crate::game::DEFAULT_KOMI, 0, u16::MAX, true);
+        let mut game =
+            Game::with_options(width, height, crate::game::DEFAULT_KOMI, 0, u16::MAX, true);
 
         if moves_str.is_empty() {
             return Ok(game);

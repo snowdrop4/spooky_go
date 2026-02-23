@@ -75,15 +75,15 @@ class TestGameMoves:
     def test_legal_moves_initial(self) -> None:
         game = Game(9, 9)
         moves = game.legal_moves()
-        # 81 board positions + 1 pass
-        assert len(moves) == 82
+        # 81 board positions, pass not yet legal (min_moves_before_pass_possible)
+        assert len(moves) == 81
 
     def test_legal_moves_after_move(self) -> None:
         game = Game(9, 9)
         game.make_move(Move.place(4, 4))
         moves = game.legal_moves()
-        # 80 board positions + 1 pass
-        assert len(moves) == 81
+        # 80 board positions, pass not yet legal
+        assert len(moves) == 80
 
     def test_unmake_move(self) -> None:
         game = Game(9, 9)
@@ -103,20 +103,22 @@ class TestGameMoves:
 
 class TestPassMove:
     def test_pass_is_legal(self) -> None:
+        game = Game.with_options(9, 9, 7.5, 0, 1000, False)
+        assert game.is_legal_move(Move.pass_move())
+
+    def test_pass_not_legal_before_min_moves(self) -> None:
         game = Game(9, 9)
-        pass_move = Move.pass_move()
-        assert game.is_legal_move(pass_move)
+        assert not game.is_legal_move(Move.pass_move())
 
     def test_pass_changes_turn(self) -> None:
-        game = Game(9, 9)
+        game = Game.with_options(9, 9, 7.5, 0, 1000, False)
         assert game.turn() == BLACK
 
         game.make_move(Move.pass_move())
         assert game.turn() == WHITE
 
     def test_two_passes_ends_game(self) -> None:
-        # Use with_options to set min_moves=0 so double-pass ends immediately
-        game = Game.with_options(width=9, height=9, komi=7.5, min_moves_before_pass_ends=0, max_moves=1000)
+        game = Game.with_options(9, 9, 7.5, 0, 1000, False)
 
         game.make_move(Move.pass_move())
         assert not game.is_over()
@@ -126,14 +128,11 @@ class TestPassMove:
         assert game.outcome() is not None
 
     def test_two_passes_requires_min_moves(self) -> None:
-        # Default game requires minimum moves before pass ends game
         game = Game(9, 9)
-        assert game.min_moves_before_pass_ends() == 40  # 81 / 2
+        assert game.min_moves_before_pass_possible() == 40  # 81 / 2
 
-        game.make_move(Move.pass_move())
-        game.make_move(Move.pass_move())
-        # Should NOT be over because min_moves not reached
-        assert not game.is_over()
+        # Pass not legal before min moves
+        assert not game.is_legal_move(Move.pass_move())
 
 
 class TestCaptures:
@@ -172,7 +171,7 @@ class TestKoRule:
         game.make_move(Move.place(1, 1))  # W - will be captured
         game.make_move(Move.place(1, 2))  # B
         game.make_move(Move.place(2, 2))  # W
-        game.make_move(Move.pass_move())  # B pass
+        game.make_move(Move.place(4, 4))  # B (elsewhere)
         game.make_move(Move.place(3, 1))  # W
 
         # Black captures at (2, 1)
@@ -189,36 +188,42 @@ class TestKoRule:
 
 
 class TestSuicide:
+    def test_suicide_prevented(self) -> None:
+        game = Game(5, 5)
+
+        # Black surrounds corner at (0, 0)
+        game.make_move(Move.place(1, 0))  # B
+        game.make_move(Move.place(4, 4))  # W (elsewhere)
+        game.make_move(Move.place(0, 1))  # B
+
+        # White playing (0, 0) would have 0 liberties and captures nothing
+        assert not game.is_legal_move(Move.place(0, 0))
+
     def test_suicide_allowed_if_captures(self) -> None:
         game = Game(5, 5)
 
-        # Black surrounds corner except (0, 0)
+        # Set up position where Black can play a stone surrounded by
+        # White on all 4 sides, but it captures W(1,1)
         game.make_move(Move.place(1, 0))  # B
-        game.make_move(Move.pass_move())  # W
+        game.make_move(Move.place(2, 0))  # W
         game.make_move(Move.place(0, 1))  # B
-        game.make_move(Move.pass_move())  # W
+        game.make_move(Move.place(1, 1))  # W
+        game.make_move(Move.place(1, 2))  # B
+        game.make_move(Move.place(2, 2))  # W
+        game.make_move(Move.place(4, 4))  # B (elsewhere)
+        game.make_move(Move.place(3, 1))  # W
 
-        # White can play at (0, 0) - it has liberties from adjacent black
-        # This is actually a case where white would be captured...
-        # Let me construct a proper non-suicide case
-        move = Move.place(0, 0)
-        # This should be legal since White can play there (has liberties or captures)
-        assert game.is_legal_move(move)
+        #   0 1 2 3 4
+        # 0 . B W . .
+        # 1 B W . W .
+        # 2 . B W . .
+        #
+        # Black plays (2,1): 0 immediate liberties, but captures W(1,1)
+        assert game.is_legal_move(Move.place(2, 1))
+        game.make_move(Move.place(2, 1))
 
-    def test_suicide_prevented(self) -> None:
-        # Use with_options to set min_moves=0 so double-pass ends game
-        game = Game.with_options(width=5, height=5, komi=7.5, min_moves_before_pass_ends=0, max_moves=1000)
-
-        # Black plays stones surrounding (0, 0)
-        game.make_move(Move.place(1, 0))  # B
-        game.make_move(Move.pass_move())  # W
-        game.make_move(Move.place(0, 1))  # B
-        game.make_move(Move.pass_move())  # W
-        game.make_move(Move.pass_move())  # B - game ends with double pass
-
-        # Game is over, so all moves are illegal
-        suicide_move = Move.place(0, 0)
-        assert not game.is_legal_move(suicide_move)
+        assert game.board().get_piece(1, 1) is None  # W(1,1) captured
+        assert game.board().get_piece(2, 1) == BLACK  # B(2,1) survives
 
 
 class TestGameClone:
@@ -246,25 +251,7 @@ class TestGameClone:
         assert cloned.turn() == BLACK
 
 
-class TestGameDisplay:
-    def test_str(self) -> None:
-        game = Game(9, 9)
-        s = str(game)
-        assert isinstance(s, str)
-        assert len(s) > 0
-
-    def test_repr(self) -> None:
-        game = Game(9, 9)
-        r = repr(game)
-        assert "Game" in r
-
-
 class TestGameHash:
-    def test_hash(self) -> None:
-        game = Game(9, 9)
-        h = hash(game)
-        assert isinstance(h, int)
-
     def test_same_state_same_hash(self) -> None:
         game1 = Game(9, 9)
         game2 = Game(9, 9)

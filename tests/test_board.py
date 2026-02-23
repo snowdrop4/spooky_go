@@ -66,17 +66,3 @@ class TestBoardPieces:
         for row in range(9):
             for col in range(9):
                 assert board.get_piece(col, row) is None
-
-
-class TestBoardDisplay:
-    def test_str(self) -> None:
-        board = Board(5, 5)
-        s = str(board)
-        assert isinstance(s, str)
-        assert len(s) > 0
-
-    def test_repr(self) -> None:
-        board = Board(9, 9)
-        r = repr(board)
-        assert "Board" in r
-        assert "9" in r

@@ -160,7 +160,8 @@ def _play_random_game(
         width=board_size,
         height=board_size,
         komi=7.5,
-        min_moves_before_pass_ends=0,
+        min_moves_before_pass_possible=0,
+        superko=True,
         max_moves=max_moves * 2,  # High enough to not interfere
     )
     dlgo_game = GameState.new_game(board_size)
@@ -371,7 +372,8 @@ def test_specific_capture_sequences() -> None:
             width=board_size,
             height=board_size,
             komi=7.5,
-            min_moves_before_pass_ends=0,
+            min_moves_before_pass_possible=0,
+            superko=True,
             max_moves=1000,
         )
         dlgo_game = GameState.new_game(board_size)
@@ -404,7 +406,8 @@ def test_ko_rule() -> None:
         width=board_size,
         height=board_size,
         komi=7.5,
-        min_moves_before_pass_ends=0,
+        min_moves_before_pass_possible=0,
+        superko=True,
         max_moves=1000,
     )
     dlgo_game = GameState.new_game(board_size)

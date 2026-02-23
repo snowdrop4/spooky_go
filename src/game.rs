@@ -300,7 +300,9 @@ impl<const NW: usize> Game<NW> {
             moves.push(Move::place(pos.col, pos.row));
         }
 
-        if moves.is_empty() || self.move_history.len() >= self.min_moves_before_pass_possible as usize {
+        if moves.is_empty()
+            || self.move_history.len() >= self.min_moves_before_pass_possible as usize
+        {
             moves.push(Move::pass());
         }
 
@@ -604,7 +606,8 @@ mod tests {
 
     #[test]
     fn test_pass_move() {
-        let mut game = Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 0, 1000, false);
+        let mut game =
+            Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 0, 1000, false);
 
         assert!(game.make_move(&Move::pass()));
         assert_eq!(game.turn(), Player::White);
@@ -627,7 +630,8 @@ mod tests {
 
     #[test]
     fn test_pass_ends_game_after_min_moves() {
-        let mut game = Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 4, 1000, false);
+        let mut game =
+            Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 4, 1000, false);
 
         // Pass not legal before 4 moves
         assert!(!game.is_legal_move(&Move::pass()));
@@ -644,7 +648,8 @@ mod tests {
 
     #[test]
     fn test_max_moves_ends_game() {
-        let mut game = Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 100, 5, false);
+        let mut game =
+            Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 100, 5, false);
 
         game.make_move(&Move::place(0, 0));
         game.make_move(&Move::place(1, 0));
@@ -707,7 +712,8 @@ mod tests {
 
     #[test]
     fn test_capture_group() {
-        let mut game = Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, DEFAULT_KOMI, 0, 1000, true);
+        let mut game =
+            Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, DEFAULT_KOMI, 0, 1000, true);
 
         game.make_move(&Move::place(0, 0));
         game.make_move(&Move::place(1, 0));
@@ -732,7 +738,8 @@ mod tests {
 
     #[test]
     fn test_suicide_prevention() {
-        let mut game = Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, DEFAULT_KOMI, 0, 1000, true);
+        let mut game =
+            Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, DEFAULT_KOMI, 0, 1000, true);
 
         game.make_move(&Move::place(1, 0));
         game.make_move(&Move::pass());
@@ -747,7 +754,8 @@ mod tests {
 
     #[test]
     fn test_actual_suicide_prevention() {
-        let mut game = Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, DEFAULT_KOMI, 0, 1000, false);
+        let mut game =
+            Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, DEFAULT_KOMI, 0, 1000, false);
 
         game.make_move(&Move::place(1, 0));
         game.make_move(&Move::pass());
@@ -761,7 +769,8 @@ mod tests {
 
     #[test]
     fn test_ko_rule() {
-        let mut game = Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, DEFAULT_KOMI, 0, 1000, true);
+        let mut game =
+            Game::<{ nw_for_board(5, 5) }>::with_options(5, 5, DEFAULT_KOMI, 0, 1000, true);
 
         game.make_move(&Move::place(1, 0));
         game.make_move(&Move::place(2, 0));
@@ -824,7 +833,8 @@ mod tests {
 
     #[test]
     fn test_legal_moves_when_game_over() {
-        let mut game = Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 0, 1000, false);
+        let mut game =
+            Game::<{ nw_for_board(9, 9) }>::with_options(9, 9, DEFAULT_KOMI, 0, 1000, false);
 
         game.make_move(&Move::pass());
         game.make_move(&Move::pass());

@@ -2,7 +2,7 @@ use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not};
 
 /// Compute the number of u64 words needed for a board of given dimensions.
 pub const fn nw_for_board(width: u8, height: u8) -> usize {
-    ((width as u16 * height as u16) as usize + 63) / 64
+    ((width as u16 * height as u16) as usize).div_ceil(64)
 }
 
 /// A fixed-size bitboard parameterized by the number of u64 words.
@@ -297,12 +297,12 @@ impl<const NW: usize> BoardGeometry<NW> {
         debug_assert!((2..=32).contains(&height));
         let area = width as u16 * height as u16;
         assert!(
-            NW == (area as usize + 63) / 64,
+            NW == (area as usize).div_ceil(64),
             "NW={} does not match board {}x{} (need {})",
             NW,
             width,
             height,
-            (area as usize + 63) / 64
+            (area as usize).div_ceil(64)
         );
         let w = width as usize;
         let h = height as usize;
@@ -670,20 +670,34 @@ mod tests {
                 nbrs & geo.board_mask,
                 nbrs,
                 "neighbors outside board at {}x{} idx={}",
-                w, h, idx
+                w,
+                h,
+                idx
             );
             // Verify correct neighbor count
             let col = idx % w;
             let row = idx / w;
             let mut expected = 0u32;
-            if col > 0 { expected += 1; }
-            if col + 1 < w { expected += 1; }
-            if row > 0 { expected += 1; }
-            if row + 1 < h { expected += 1; }
+            if col > 0 {
+                expected += 1;
+            }
+            if col + 1 < w {
+                expected += 1;
+            }
+            if row > 0 {
+                expected += 1;
+            }
+            if row + 1 < h {
+                expected += 1;
+            }
             assert_eq!(
-                nbrs.count(), expected,
+                nbrs.count(),
+                expected,
                 "wrong neighbor count at {}x{} col={} row={}",
-                w, h, col, row
+                w,
+                h,
+                col,
+                row
             );
         }
     }

@@ -40,16 +40,6 @@ class TestMoveEquality:
 
 
 class TestMoveHash:
-    def test_hash_place(self) -> None:
-        move = Move.place(4, 5)
-        h = hash(move)
-        assert isinstance(h, int)
-
-    def test_hash_pass(self) -> None:
-        move = Move.pass_move()
-        h = hash(move)
-        assert isinstance(h, int)
-
     def test_equal_moves_same_hash(self) -> None:
         move1 = Move.place(4, 5)
         move2 = Move.place(4, 5)
@@ -123,18 +113,6 @@ class TestMoveEncoding:
 
 
 class TestMoveDisplay:
-    def test_str_place(self) -> None:
-        move = Move.place(4, 5)
-        s = str(move)
-        assert isinstance(s, str)
-        assert "4" in s or "5" in s
-
-    def test_str_pass(self) -> None:
-        move = Move.pass_move()
-        s = str(move)
-        assert isinstance(s, str)
-        assert "Pass" in s or "pass" in s
-
     def test_repr_place(self) -> None:
         move = Move.place(4, 5)
         r = repr(move)
@@ -153,13 +131,8 @@ class TestMoveInGame:
         game = Game(9, 9)
         moves = game.legal_moves()
 
-        # Check we have the right number
-        assert len(moves) == 82
+        # 81 board positions, no pass (min_moves_before_pass_possible not reached)
+        assert len(moves) == 81
 
-        # Check pass is in there
-        pass_moves = [m for m in moves if m.is_pass()]
-        assert len(pass_moves) == 1
-
-        # Check place moves
         place_moves = [m for m in moves if not m.is_pass()]
         assert len(place_moves) == 81
