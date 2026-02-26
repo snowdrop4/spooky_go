@@ -7,9 +7,6 @@ pub mod outcome;
 pub mod player;
 pub mod position;
 
-#[cfg(feature = "serde")]
-pub mod serde_support;
-
 #[cfg(feature = "python")]
 extern crate pyo3;
 
