@@ -78,14 +78,22 @@ fn bench_make_unmake(c: &mut Criterion) {
 fn bench_encode_game_planes_9x9(c: &mut Criterion) {
     let game = setup_midgame::<{ nw_for_board(9, 9) }>(9, 9);
     c.bench_function("encode_game_planes_9x9", |b| {
-        b.iter(|| black_box(encode_game_planes(&game)))
+        b.iter_batched(
+            || game.clone(),
+            |mut g| black_box(encode_game_planes(&mut g)),
+            criterion::BatchSize::SmallInput,
+        )
     });
 }
 
 fn bench_encode_game_planes_19x19(c: &mut Criterion) {
     let game = setup_midgame::<{ nw_for_board(19, 19) }>(19, 19);
     c.bench_function("encode_game_planes_19x19", |b| {
-        b.iter(|| black_box(encode_game_planes(&game)))
+        b.iter_batched(
+            || game.clone(),
+            |mut g| black_box(encode_game_planes(&mut g)),
+            criterion::BatchSize::SmallInput,
+        )
     });
 }
 
@@ -135,7 +143,7 @@ fn bench_self_play_step(c: &mut Criterion) {
             || game.clone(),
             |mut g| {
                 let moves = g.legal_moves();
-                let _planes = encode_game_planes(&g);
+                let _planes = encode_game_planes(&mut g);
                 // Pick the first legal placement (simulating a policy choice)
                 let mv = moves.iter().find(|m| !m.is_pass()).copied().unwrap();
                 g.make_move(&mv);
