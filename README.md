@@ -2,6 +2,18 @@
 
 Rust and Python library for the game of Go.
 
+# Rust
+
+```fish
+cargo add spooky_go
+```
+
+# Python
+
+```fish
+uv add spooky-go
+```
+
 ## Develop
 
 ### Tests
