@@ -390,10 +390,6 @@ mod python_bindings {
             })
         }
 
-        pub fn name(&self) -> String {
-            dispatch_game!(&self.inner, g => format!("go_{}x{}", g.width(), g.height()))
-        }
-
         pub fn outcome(&self) -> Option<PyGameOutcome> {
             dispatch_game!(&self.inner, g => g.outcome().map(|o| PyGameOutcome { outcome: o }))
         }
@@ -565,10 +561,6 @@ mod python_bindings {
 
         pub fn is_draw(&self) -> bool {
             self.outcome.is_draw()
-        }
-
-        pub fn name(&self) -> String {
-            self.outcome.to_string()
         }
 
         pub fn __str__(&self) -> String {
