@@ -1,12 +1,12 @@
 use pyo3::prelude::*;
 
+use super::dispatch::*;
+use super::py_board::PyBoard;
+use super::py_game_outcome::PyGameOutcome;
+use super::py_move::PyMove;
 use crate::encode;
 use crate::player::Player;
 use crate::position::Position;
-use super::dispatch::*;
-use super::py_board::PyBoard;
-use super::py_move::PyMove;
-use super::py_game_outcome::PyGameOutcome;
 
 #[pyclass(name = "Game")]
 pub struct PyGame {

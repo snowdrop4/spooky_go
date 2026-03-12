@@ -93,6 +93,10 @@ impl<const NW: usize> Game<NW> {
         self.komi
     }
 
+    pub fn set_komi(&mut self, komi: f32) {
+        self.komi = komi;
+    }
+
     pub fn min_moves_before_pass_possible(&self) -> u16 {
         self.min_moves_before_pass_possible
     }

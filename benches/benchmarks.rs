@@ -19,7 +19,9 @@ fn setup_midgame<const NW: usize>(width: u8, height: u8) -> Game<NW> {
         if placements.is_empty() {
             break;
         }
-        let mv = placements.choose(&mut rng).expect("setup_midgame: placement moves must not be empty");
+        let mv = placements
+            .choose(&mut rng)
+            .expect("setup_midgame: placement moves must not be empty");
         game.make_move(mv);
     }
     game
@@ -47,7 +49,11 @@ fn bench_make_move(c: &mut Criterion) {
     let game = setup_midgame::<{ nw_for_board(9, 9) }>(9, 9);
     // Pick the first legal placement move
     let moves = game.legal_moves();
-    let mv = moves.iter().find(|m| !m.is_pass()).copied().expect("bench_make_move: non-pass move must exist");
+    let mv = moves
+        .iter()
+        .find(|m| !m.is_pass())
+        .copied()
+        .expect("bench_make_move: non-pass move must exist");
     c.bench_function("make_move", |b| {
         b.iter_batched(
             || game.clone(),
@@ -62,7 +68,11 @@ fn bench_make_move(c: &mut Criterion) {
 fn bench_make_unmake(c: &mut Criterion) {
     let game = setup_midgame::<{ nw_for_board(9, 9) }>(9, 9);
     let moves = game.legal_moves();
-    let mv = moves.iter().find(|m| !m.is_pass()).copied().expect("bench_make_unmake: non-pass move must exist");
+    let mv = moves
+        .iter()
+        .find(|m| !m.is_pass())
+        .copied()
+        .expect("bench_make_unmake: non-pass move must exist");
     c.bench_function("make_unmake", |b| {
         b.iter_batched(
             || game.clone(),
@@ -113,7 +123,9 @@ fn bench_random_playout_9x9(c: &mut Criterion) {
             let mut rng = StdRng::seed_from_u64(123);
             while !game.is_over() {
                 let moves = game.legal_moves();
-                let mv = moves.choose(&mut rng).expect("bench_random_playout_9x9: legal moves must not be empty");
+                let mv = moves
+                    .choose(&mut rng)
+                    .expect("bench_random_playout_9x9: legal moves must not be empty");
                 game.make_move(mv);
             }
             black_box(game.outcome())
@@ -128,7 +140,9 @@ fn bench_random_playout_19x19(c: &mut Criterion) {
             let mut rng = StdRng::seed_from_u64(123);
             while !game.is_over() {
                 let moves = game.legal_moves();
-                let mv = moves.choose(&mut rng).expect("bench_random_playout_19x19: legal moves must not be empty");
+                let mv = moves
+                    .choose(&mut rng)
+                    .expect("bench_random_playout_19x19: legal moves must not be empty");
                 game.make_move(mv);
             }
             black_box(game.outcome())
@@ -145,7 +159,11 @@ fn bench_self_play_step(c: &mut Criterion) {
                 let moves = g.legal_moves();
                 let _planes = encode_game_planes(&mut g);
                 // Pick the first legal placement (simulating a policy choice)
-                let mv = moves.iter().find(|m| !m.is_pass()).copied().expect("bench_self_play_step: non-pass move must exist");
+                let mv = moves
+                    .iter()
+                    .find(|m| !m.is_pass())
+                    .copied()
+                    .expect("bench_self_play_step: non-pass move must exist");
                 g.make_move(&mv);
                 black_box(&g);
             },

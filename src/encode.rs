@@ -159,7 +159,8 @@ mod tests {
             for col in 0..width {
                 let move_ = Move::place(col, row);
                 let encoded = encode_move(&move_, width, height);
-                let decoded = decode_move(encoded, width, height).expect("test_encode_decode_move: failed to decode placement move");
+                let decoded = decode_move(encoded, width, height)
+                    .expect("test_encode_decode_move: failed to decode placement move");
 
                 assert_eq!(decoded, move_);
             }
@@ -169,7 +170,8 @@ mod tests {
         let encoded_pass = encode_move(&pass, width, height);
         assert_eq!(encoded_pass, width as usize * height as usize);
 
-        let decoded_pass = decode_move(encoded_pass, width, height).expect("test_encode_decode_move: failed to decode pass move");
+        let decoded_pass = decode_move(encoded_pass, width, height)
+            .expect("test_encode_decode_move: failed to decode pass move");
         assert_eq!(decoded_pass, pass);
     }
 
@@ -266,7 +268,9 @@ mod tests {
                             thread_moves_tested += 1;
                         }
 
-                        let chosen_move = legal_moves.choose(&mut rng).expect("test_fuzz_encoding_random_games: legal moves must not be empty");
+                        let chosen_move = legal_moves.choose(&mut rng).expect(
+                            "test_fuzz_encoding_random_games: legal moves must not be empty",
+                        );
                         let success = game.make_move(chosen_move);
                         assert!(success, "Failed to make move {:?}", chosen_move);
 
@@ -282,7 +286,9 @@ mod tests {
         }
 
         for handle in handles {
-            handle.join().expect("test_fuzz_encoding_random_games: worker thread panicked");
+            handle
+                .join()
+                .expect("test_fuzz_encoding_random_games: worker thread panicked");
         }
 
         let final_moves_played = total_moves_played.load(Ordering::Relaxed);
@@ -319,7 +325,9 @@ mod tests {
             let encoding2 = encode_game_planes(&mut game);
             assert_eq!(encoding1, encoding2, "Encoding should be deterministic");
 
-            let chosen_move = legal_moves.choose(&mut rng).expect("test_encoding_consistency: legal moves must not be empty");
+            let chosen_move = legal_moves
+                .choose(&mut rng)
+                .expect("test_encoding_consistency: legal moves must not be empty");
             game.make_move(chosen_move);
         }
     }
@@ -402,7 +410,8 @@ mod tests {
             for col in 0u8..19 {
                 let move_ = Move::place(col, row);
                 let encoded = encode_move(&move_, 19, 19);
-                let decoded = decode_move(encoded, 19, 19).expect("test_encode_arbitrary_board_size_19x19: failed to decode 19x19 move");
+                let decoded = decode_move(encoded, 19, 19)
+                    .expect("test_encode_arbitrary_board_size_19x19: failed to decode 19x19 move");
                 assert_eq!(decoded, move_);
             }
         }
@@ -454,7 +463,8 @@ mod tests {
         let encoded_19x19 = encode_move(&pass, 19, 19);
         assert_eq!(encoded_19x19, 361);
 
-        let decoded = decode_move(81, 9, 9).expect("test_pass_move_encoding: failed to decode pass action 81 for 9x9");
+        let decoded = decode_move(81, 9, 9)
+            .expect("test_pass_move_encoding: failed to decode pass action 81 for 9x9");
         assert!(decoded.is_pass());
     }
 }

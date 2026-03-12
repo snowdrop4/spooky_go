@@ -4,9 +4,11 @@ Rust and Python library for the game of Go.
 
 # Features
 
-- Supports variable board sizes.
+- Drive external engines with [Go Text Protocol](https://en.wikipedia.org/wiki/Go_Text_Protocol).
+- Variable board sizes.
 - Relatively fast.
 - Out-of-the-box support for DL/ML (action encoding and decoding methods).
+- Consistent interface [spooky-chess](https://github.com/snowdrop4/spooky-chess) and [spooky-connect4](https://github.com/snowdrop4/spooky-connect4).
 
 # Install
 

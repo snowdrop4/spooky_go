@@ -1,8 +1,8 @@
 use pyo3::prelude::*;
 
+use super::dispatch::*;
 use crate::player::Player;
 use crate::position::Position;
-use super::dispatch::*;
 
 #[pyclass(name = "Board")]
 #[derive(Clone)]

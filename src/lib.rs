@@ -7,6 +7,12 @@ pub mod outcome;
 pub mod player;
 pub mod position;
 
+#[allow(unused_macros)]
+#[macro_use]
+mod dispatch;
+
+pub mod gtp;
+
 #[cfg(feature = "python")]
 extern crate pyo3;
 
@@ -25,6 +31,7 @@ fn spooky_go(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyGame>()?;
     m.add_class::<PyMove>()?;
     m.add_class::<PyGameOutcome>()?;
+    m.add_class::<PyGtpEngine>()?;
     m.add("BLACK", Player::Black as i8)?;
     m.add("WHITE", Player::White as i8)?;
     m.add("TOTAL_INPUT_PLANES", encode::TOTAL_INPUT_PLANES)?;

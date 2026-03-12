@@ -2,7 +2,6 @@ from spooky_go import BLACK, WHITE, Game, Move
 
 
 def _game_with_pass(width: int = 9, height: int = 9, komi: float = 7.5) -> Game:
-    """Create a game where pass is immediately legal (min_moves=0)."""
     return Game.with_options(width, height, komi, 0, 1000, False)
 
 
