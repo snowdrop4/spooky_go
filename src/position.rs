@@ -4,6 +4,7 @@ pub struct Position {
     pub row: u8,
 }
 
+#[hotpath::measure_all]
 impl Position {
     pub fn new(col: u8, row: u8) -> Self {
         Position { col, row }

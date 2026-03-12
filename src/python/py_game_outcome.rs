@@ -9,12 +9,14 @@ pub struct PyGameOutcome {
     pub(super) outcome: GameOutcome,
 }
 
+#[hotpath::measure_all]
 impl PyGameOutcome {
     pub(super) fn from_outcome(outcome: GameOutcome) -> Self {
         PyGameOutcome { outcome }
     }
 }
 
+#[hotpath::measure_all]
 #[pymethods]
 impl PyGameOutcome {
     pub fn winner(&self) -> Option<i8> {

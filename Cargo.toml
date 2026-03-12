@@ -15,9 +15,14 @@ crate-type = ["cdylib", "rlib"]
 pyo3 = { version = "0.28", features = ["extension-module"], optional = true }
 paste = "1.0"
 rand = "0.10.0"
+hotpath = { version = "0.13" }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
+
+[[bin]]
+name = "profile"
+path = "src/bin/profile.rs"
 
 [[bench]]
 name = "benchmarks"
@@ -28,6 +33,9 @@ required-features = ["bench"]
 default = []
 python = ["pyo3"]
 bench = []
+hotpath = ["hotpath/hotpath"]
+hotpath-alloc = ["hotpath/hotpath-alloc"]
+hotpath-mcp = ["hotpath/hotpath-mcp"]
 
 [lints.clippy]
 unwrap_used = "deny"

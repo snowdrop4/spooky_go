@@ -6,6 +6,7 @@ pub enum Move {
     Pass,
 }
 
+#[hotpath::measure_all]
 impl Move {
     pub fn place(col: u8, row: u8) -> Self {
         Move::Place { col, row }
@@ -41,6 +42,7 @@ impl Move {
     }
 }
 
+#[hotpath::measure_all]
 impl std::fmt::Display for Move {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

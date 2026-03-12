@@ -7,6 +7,7 @@ pub enum GameOutcome {
     Draw,
 }
 
+#[hotpath::measure_all]
 impl GameOutcome {
     pub fn winner(&self) -> Option<Player> {
         match self {
@@ -44,6 +45,7 @@ impl GameOutcome {
     }
 }
 
+#[hotpath::measure_all]
 impl std::fmt::Display for GameOutcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

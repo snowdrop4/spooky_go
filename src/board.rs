@@ -16,6 +16,7 @@ pub struct Board<const NW: usize> {
     height: u8,
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> Hash for Board<NW> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.black.hash(state);
@@ -25,6 +26,7 @@ impl<const NW: usize> Hash for Board<NW> {
     }
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> Board<NW> {
     pub fn new(width: u8, height: u8) -> Self {
         Board {
@@ -138,6 +140,7 @@ impl<const NW: usize> Board<NW> {
     }
 }
 
+#[hotpath::measure_all]
 impl Default for Board<{ nw_for_board(STANDARD_COLS, STANDARD_ROWS) }> {
     fn default() -> Self {
         Self::new(STANDARD_COLS, STANDARD_ROWS)
@@ -165,6 +168,7 @@ mod tests {
     }
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> fmt::Display for Board<NW> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for row in (0..self.height as usize).rev() {

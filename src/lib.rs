@@ -24,6 +24,7 @@ mod python;
 
 #[cfg(feature = "python")]
 #[pymodule(gil_used = false)]
+#[hotpath::measure]
 fn spooky_go(m: &Bound<'_, PyModule>) -> PyResult<()> {
     use player::Player;
     use python::*;

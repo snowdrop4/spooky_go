@@ -10,6 +10,7 @@ pub struct PyGtpEngine {
     inner: Option<GtpEngine>,
 }
 
+#[hotpath::measure_all]
 impl PyGtpEngine {
     fn engine(&self) -> PyResult<&GtpEngine> {
         self.inner
@@ -28,6 +29,7 @@ fn gtp_err_to_py(e: crate::gtp::GtpError) -> PyErr {
     PyRuntimeError::new_err(e.to_string())
 }
 
+#[hotpath::measure_all]
 #[pymethods]
 impl PyGtpEngine {
     #[new]

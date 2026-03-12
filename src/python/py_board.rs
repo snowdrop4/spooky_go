@@ -10,12 +10,14 @@ pub struct PyBoard {
     pub(super) inner: BoardInner,
 }
 
+#[hotpath::measure_all]
 impl PyBoard {
     pub(super) fn from_inner(inner: BoardInner) -> Self {
         PyBoard { inner }
     }
 }
 
+#[hotpath::measure_all]
 #[pymethods]
 impl PyBoard {
     #[new]

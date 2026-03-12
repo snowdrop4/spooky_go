@@ -5,6 +5,7 @@ pub enum Player {
     White = -1,
 }
 
+#[hotpath::measure_all]
 impl Player {
     pub fn opposite(&self) -> Player {
         match self {
@@ -37,6 +38,7 @@ impl Player {
     }
 }
 
+#[hotpath::measure_all]
 impl std::fmt::Display for Player {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let player_str = match self {

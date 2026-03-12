@@ -9,6 +9,7 @@ pub struct PyMove {
     pub(super) move_: Move,
 }
 
+#[hotpath::measure_all]
 impl PyMove {
     pub(super) fn from_move(move_: Move) -> Self {
         PyMove { move_ }
@@ -19,6 +20,7 @@ impl PyMove {
     }
 }
 
+#[hotpath::measure_all]
 #[pymethods]
 impl PyMove {
     #[staticmethod]

@@ -8,6 +8,7 @@ use crate::player::Player;
 use crate::position::Position;
 use crate::r#move::Move;
 
+#[hotpath::measure]
 fn compute_position_hash<const NW: usize>(board: &Board<NW>, player: Player) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     board.hash(&mut hasher);
@@ -41,6 +42,7 @@ pub struct Game<const NW: usize> {
     position_hashes: Option<HashSet<u64>>,
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> Game<NW> {
     pub fn new(width: u8, height: u8) -> Self {
         let board_size = width as u16 * height as u16;
@@ -515,18 +517,21 @@ impl<const NW: usize> Game<NW> {
     }
 }
 
+#[hotpath::measure_all]
 impl Game<{ nw_for_board(STANDARD_COLS, STANDARD_ROWS) }> {
     pub fn standard() -> Self {
         Self::new(STANDARD_COLS, STANDARD_ROWS)
     }
 }
 
+#[hotpath::measure_all]
 impl Default for Game<{ nw_for_board(STANDARD_COLS, STANDARD_ROWS) }> {
     fn default() -> Self {
         Self::standard()
     }
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> std::fmt::Display for Game<NW> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

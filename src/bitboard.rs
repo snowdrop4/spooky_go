@@ -19,6 +19,15 @@ impl<const NW: usize> Bitboard<NW> {
         Bitboard { words: [0; NW] }
     }
 
+    /// Construct from raw words.
+    #[inline]
+    pub const fn from_words(words: [u64; NW]) -> Self {
+        Bitboard { words }
+    }
+}
+
+#[hotpath::measure_all]
+impl<const NW: usize> Bitboard<NW> {
     /// Single bit set at `index`.
     #[inline]
     pub fn single(index: usize) -> Self {
@@ -26,12 +35,6 @@ impl<const NW: usize> Bitboard<NW> {
         let mut bb = Self::empty();
         bb.words[index / 64] = 1u64 << (index % 64);
         bb
-    }
-
-    /// Construct from raw words.
-    #[inline]
-    pub const fn from_words(words: [u64; NW]) -> Self {
-        Bitboard { words }
     }
 
     /// Test whether bit `index` is set.
@@ -187,6 +190,7 @@ impl<const NW: usize> Bitboard<NW> {
     }
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> BitAnd for Bitboard<NW> {
     type Output = Bitboard<NW>;
     #[inline]
@@ -201,6 +205,7 @@ impl<const NW: usize> BitAnd for Bitboard<NW> {
     }
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> BitAndAssign for Bitboard<NW> {
     #[inline]
     fn bitand_assign(&mut self, rhs: Bitboard<NW>) {
@@ -212,6 +217,7 @@ impl<const NW: usize> BitAndAssign for Bitboard<NW> {
     }
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> BitOr for Bitboard<NW> {
     type Output = Bitboard<NW>;
     #[inline]
@@ -226,6 +232,7 @@ impl<const NW: usize> BitOr for Bitboard<NW> {
     }
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> BitOrAssign for Bitboard<NW> {
     #[inline]
     fn bitor_assign(&mut self, rhs: Bitboard<NW>) {
@@ -237,6 +244,7 @@ impl<const NW: usize> BitOrAssign for Bitboard<NW> {
     }
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> Not for Bitboard<NW> {
     type Output = Bitboard<NW>;
     #[inline]
@@ -257,6 +265,7 @@ pub struct BitIterator<const NW: usize> {
     word_index: u8,
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> Iterator for BitIterator<NW> {
     type Item = usize;
     #[inline]
@@ -290,6 +299,7 @@ pub struct BoardGeometry<const NW: usize> {
     pub not_col_last: Bitboard<NW>,
 }
 
+#[hotpath::measure_all]
 impl<const NW: usize> BoardGeometry<NW> {
     /// Build geometry for a `width × height` board.
     pub fn new(width: u8, height: u8) -> Self {

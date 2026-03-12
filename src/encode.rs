@@ -16,6 +16,7 @@ pub const TOTAL_INPUT_PLANES: usize = (HISTORY_LENGTH * PIECE_PLANES) + CONSTANT
 
 /// Encode the full game state into a flat f32 array for efficient transfer to Python/numpy
 /// Returns (flat_data, num_planes, height, width), where flat_data is in row-major order
+#[hotpath::measure]
 pub fn encode_game_planes<const NW: usize>(game: &mut Game<NW>) -> (Vec<f32>, usize, usize, usize) {
     let perspective = game.turn();
     let width = game.width() as usize;
@@ -59,6 +60,7 @@ pub fn encode_game_planes<const NW: usize>(game: &mut Game<NW>) -> (Vec<f32>, us
     (data, num_planes, height, width)
 }
 
+#[hotpath::measure]
 fn fill_go_planes<const NW: usize>(
     data: &mut [f32],
     game: &Game<NW>,
@@ -84,6 +86,7 @@ fn fill_go_planes<const NW: usize>(
 }
 
 /// Encode a move as an action index for the policy head
+#[hotpath::measure]
 pub fn encode_move(move_: &Move, board_width: u8, board_height: u8) -> usize {
     match move_ {
         Move::Place { col, row } => *row as usize * board_width as usize + *col as usize,
@@ -92,6 +95,7 @@ pub fn encode_move(move_: &Move, board_width: u8, board_height: u8) -> usize {
 }
 
 /// Returns the column number and row where the piece would land
+#[hotpath::measure]
 pub fn decode_move(action: usize, board_width: u8, board_height: u8) -> Option<Move> {
     let w = board_width as usize;
     let board_size = w * board_height as usize;
@@ -110,6 +114,7 @@ pub fn decode_move(action: usize, board_width: u8, board_height: u8) -> Option<M
     Some(Move::place(col, row))
 }
 
+#[hotpath::measure]
 pub fn total_actions(board_width: u8, board_height: u8) -> usize {
     board_width as usize * board_height as usize + 1
 }

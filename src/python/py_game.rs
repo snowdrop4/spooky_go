@@ -13,6 +13,7 @@ pub struct PyGame {
     inner: GameInner,
 }
 
+#[hotpath::measure_all]
 #[pymethods]
 impl PyGame {
     #[new]
