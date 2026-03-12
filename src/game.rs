@@ -178,7 +178,94 @@ impl<const NW: usize> Game<NW> {
         board
     }
 
-    fn would_violate_superko(&self, idx: usize, player: Player) -> bool {
+    fn is_illegal_placement(&self, idx: usize, player: Player) -> bool {
+        let bit = Bitboard::single(idx);
+        let own = self.board.stones_for(player) | bit;
+        let opponent = player.opposite();
+        let opp = self.board.stones_for(opponent);
+        let occupied = own | opp;
+        let empty = self.geo.board_mask.andnot(occupied);
+        let bit_neighbors = self.geo.neighbors(&bit);
+
+        // Fast path: placed stone has an empty neighbor -> not suicide
+        if (bit_neighbors & empty).is_nonzero() {
+            // Check superko only if captures occur
+            if self.superko {
+                let adj_opp = bit_neighbors & opp;
+                if adj_opp.is_nonzero() && self.adj_opp_has_captures(adj_opp, opp, empty) {
+                    return self.check_superko(idx, player);
+                }
+            }
+            return false;
+        }
+
+        // No immediate liberties. Flood-fill own group.
+        let group = self.geo.flood_fill(bit, own);
+        let group_neighbors = self.geo.neighbors(&group);
+
+        // Group has liberties through connected friendly stones -> not suicide
+        if (group_neighbors & empty).is_nonzero() {
+            if self.superko {
+                let adj_opp = bit_neighbors & opp;
+                if adj_opp.is_nonzero() && self.adj_opp_has_captures(adj_opp, opp, empty) {
+                    return self.check_superko(idx, player);
+                }
+            }
+            return false;
+        }
+
+        // No liberties for our group. Check if we capture any opponent groups.
+        let adj_opp = group_neighbors & opp;
+        if adj_opp.is_empty() {
+            return true; // Suicide — no opponent neighbors to capture
+        }
+
+        let mut remaining = adj_opp;
+        let mut any_captures = false;
+        while let Some(opp_idx) = remaining.lowest_bit_index() {
+            let opp_seed = Bitboard::single(opp_idx);
+            let opp_group = self.geo.flood_fill(opp_seed, opp);
+            remaining = remaining.andnot(opp_group);
+            let opp_nbrs = self.geo.neighbors(&opp_group);
+            if (opp_nbrs & empty).is_empty() {
+                any_captures = true;
+                break;
+            }
+        }
+
+        if !any_captures {
+            return true; // Suicide
+        }
+
+        // Not suicide (captures save us). Check superko only when captures occur.
+        if self.superko {
+            return self.check_superko(idx, player);
+        }
+
+        false
+    }
+
+    /// Check if any adjacent opponent group has zero liberties (would be captured).
+    fn adj_opp_has_captures(
+        &self,
+        adj_opp: Bitboard<NW>,
+        opp: Bitboard<NW>,
+        empty: Bitboard<NW>,
+    ) -> bool {
+        let mut remaining = adj_opp;
+        while let Some(opp_idx) = remaining.lowest_bit_index() {
+            let opp_seed = Bitboard::single(opp_idx);
+            let opp_group = self.geo.flood_fill(opp_seed, opp);
+            remaining = remaining.andnot(opp_group);
+            let opp_nbrs = self.geo.neighbors(&opp_group);
+            if (opp_nbrs & empty).is_empty() {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn check_superko(&self, idx: usize, player: Player) -> bool {
         if let Some(ref hashes) = self.position_hashes {
             let result_board = self.simulate_placement(idx, player);
             let hash = compute_position_hash(&result_board, player.opposite());
@@ -231,52 +318,6 @@ impl<const NW: usize> Game<NW> {
         }
     }
 
-    /// Check if placing a stone at `idx` for `player` would be suicide.
-    fn would_be_suicide(&self, idx: usize, player: Player) -> bool {
-        let bit = Bitboard::single(idx);
-        let own = self.board.stones_for(player) | bit;
-        let opp = self.board.stones_for(player.opposite());
-        let occupied = own | opp;
-        let empty = self.geo.board_mask.andnot(occupied);
-
-        // Fast path: if the new stone itself has any empty neighbor, not suicide.
-        let bit_neighbors = self.geo.neighbors(&bit);
-        if (bit_neighbors & empty).is_nonzero() {
-            return false;
-        }
-
-        // Slow path: flood-fill to find full group.
-        let group = self.geo.flood_fill(bit, own);
-
-        let group_neighbors = self.geo.neighbors(&group);
-        if (group_neighbors & empty).is_nonzero() {
-            return false;
-        }
-
-        // No liberties, check if any adjacent opponent group would be captured
-        let adjacent_opponent = group_neighbors & opp;
-        if adjacent_opponent.is_empty() {
-            return true;
-        }
-
-        let mut remaining_adj_opp = adjacent_opponent;
-        while let Some(opp_idx) = remaining_adj_opp.lowest_bit_index() {
-            let opp_seed = Bitboard::single(opp_idx);
-            let opp_group = self.geo.flood_fill(opp_seed, opp);
-
-            remaining_adj_opp = remaining_adj_opp.andnot(opp_group);
-
-            let opp_group_neighbors = self.geo.neighbors(&opp_group);
-            let opp_liberties = opp_group_neighbors & empty;
-
-            if opp_liberties.is_empty() {
-                return false;
-            }
-        }
-
-        true
-    }
-
     pub fn legal_moves(&self) -> Vec<Move> {
         if self.is_over {
             return Vec::new();
@@ -294,11 +335,7 @@ impl<const NW: usize> Game<NW> {
                 }
             }
 
-            if self.would_be_suicide(idx, self.current_player) {
-                continue;
-            }
-
-            if self.would_violate_superko(idx, self.current_player) {
+            if self.is_illegal_placement(idx, self.current_player) {
                 continue;
             }
 
@@ -327,11 +364,7 @@ impl<const NW: usize> Game<NW> {
                 }
             }
 
-            if self.would_be_suicide(idx, self.current_player) {
-                continue;
-            }
-
-            if self.would_violate_superko(idx, self.current_player) {
+            if self.is_illegal_placement(idx, self.current_player) {
                 continue;
             }
 
@@ -370,15 +403,7 @@ impl<const NW: usize> Game<NW> {
                     }
                 }
 
-                if self.would_be_suicide(idx, self.current_player) {
-                    return false;
-                }
-
-                if self.would_violate_superko(idx, self.current_player) {
-                    return false;
-                }
-
-                true
+                !self.is_illegal_placement(idx, self.current_player)
             }
         }
     }
