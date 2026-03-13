@@ -307,6 +307,76 @@ impl<const NW: usize> Game<NW> {
         (black_score, white_score)
     }
 
+    // Per-square ownership from black's (first player's) absolute perspective.
+    // +1.0 = black owns, -1.0 = white owns, 0.0 = neutral/disputed.
+    // Stones count as owned by their player; empty regions are assigned
+    // based on which player's stones exclusively border them (area scoring).
+    // Layout: row-major, index = row * width + col.
+    pub fn ownership_map_absolute(&self) -> Vec<f32> {
+        let w = self.board.width() as usize;
+        let h = self.board.height() as usize;
+        let mut ownership = vec![0.0f32; h * w];
+
+        for idx in self.board.black_stones().iter_ones() {
+            ownership[idx] = 1.0;
+        }
+        for idx in self.board.white_stones().iter_ones() {
+            ownership[idx] = -1.0;
+        }
+
+        let occupied = self.board.occupied();
+        let mut remaining_empty = self.board.empty_squares(self.geo.board_mask);
+
+        while let Some(idx) = remaining_empty.lowest_bit_index() {
+            let seed = Bitboard::single(idx);
+            let empty_mask = self.geo.board_mask & !occupied;
+            let region = self.geo.flood_fill(seed, empty_mask);
+
+            remaining_empty &= !region;
+
+            let region_neighbors = self.geo.neighbors(&region);
+            let black_adjacent = (region_neighbors & self.board.black_stones()).is_nonzero();
+            let white_adjacent = (region_neighbors & self.board.white_stones()).is_nonzero();
+
+            let owner = match (black_adjacent, white_adjacent) {
+                (true, false) => 1.0,
+                (false, true) => -1.0,
+                _ => 0.0,
+            };
+
+            for region_idx in region.iter_ones() {
+                ownership[region_idx] = owner;
+            }
+        }
+
+        ownership
+    }
+
+    pub fn ownership_map_from_perspective(&self, perspective: Player) -> Vec<f32> {
+        let mut ownership = self.ownership_map_absolute();
+        if perspective == Player::White {
+            for v in &mut ownership {
+                *v = -*v;
+            }
+        }
+        ownership
+    }
+
+    // Score margin from black's absolute perspective (includes komi).
+    // Positive means black is ahead.
+    pub fn score_margin_absolute(&self) -> f32 {
+        let (black_score, white_score) = self.score();
+        black_score - white_score
+    }
+
+    pub fn score_margin_from_perspective(&self, perspective: Player) -> f32 {
+        let margin = self.score_margin_absolute();
+        match perspective {
+            Player::Black => margin,
+            Player::White => -margin,
+        }
+    }
+
     fn determine_outcome(&self) -> GameOutcome {
         let (black_score, white_score) = self.score();
         if black_score > white_score {
